@@ -123,6 +123,10 @@ Now for each session you are either assigned one of these aliases
 Alias-Fixed - > For entire session you will be assigned a randomly picked sphinx-like fixed packet
 Alias-Random - > For entire session every single individual packets you send will be randomized
 
+16. Persona Entropy (Each Session)
+
+    For every session, you will be assigned 1 of three personas. "Deliberate", "Aggressive" or "Stochastic". Deliberate is a slow jitter persona, Aggressive is a faster jitter persona and Stochastic is completely randomized.
+
 
 
 🚀 Quick Start
