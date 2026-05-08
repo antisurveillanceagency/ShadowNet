@@ -120,8 +120,8 @@ of every packets.
 
 Now for each session you are either assigned one of these aliases
 
-Alias-Fixed - > For entire session you will be assigned a randomly picked sphinx-like fixed packet
-Alias-Random - > For entire session every single individual packets you send will be randomized
+Alias-Fixed - > For the entire session you will be assigned a randomly picked sphinx-like fixed packet
+Alias-Random - > For the entire session every single individual packets you send will be randomized
 
 16. Persona Entropy (Each Session)
 
