@@ -128,6 +128,22 @@ Alias-Random - > For the entire session every single individual packets you send
 
     For every session, you will be assigned 1 of three personas. "Deliberate", "Aggressive" or "Stochastic". Deliberate is a slow jitter persona, Aggressive is a faster jitter persona and Stochastic is completely randomized.
 
+17. Microphone/Webcam	Kill + Unload:
+
+ Prevents remote audio/video surveillance.
+ 
+Sensors	Unload modules:
+
+Prevents vibration-based keystroke logging.
+
+BIOS Lock	chattr +i:
+
+Prevents firmware-level malware (Bootkits).
+
+Power Lock	Governor:
+
+change	Masks CPU frequency side-channels.
+
 
 
 🚀 Quick Start
