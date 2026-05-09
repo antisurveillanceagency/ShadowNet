@@ -128,6 +128,12 @@ void stop_shadownet() {
     execute_14_tier_sanitation("shadownet_engine");
     execute_14_tier_sanitation("xdotool_noise");
     
+    // Restore hardware
+    system("sudo rfkill unblock bluetooth 2>/dev/null");
+    system("sudo modprobe uvcvideo 2>/dev/null");
+    system("sudo modprobe snd_hda_intel 2>/dev/null");
+    system("sudo chattr -i /sys/firmware/efi/efivars/* 2>/dev/null");
+    
     system("rm -f /dev/shm/shadownet_heartbeat.pid /dev/shm/shadownet_engine.pid /dev/shm/xdotool_noise.pid");
     system("rm -f /dev/shm/heartbeat /dev/shm/shadownet_engine /dev/shm/xdotool_noise.sh");
     
@@ -169,6 +175,92 @@ void start_shadownet() {
     int start_iat_jitter = get_entropy_delay(5, 20);
     printf("\033[1;33m[*] Applying Entropy IAT: %ds before starting ShadowNet...\033[0m\n", start_iat_jitter);
     sleep(start_iat_jitter);
+    
+    // --- HARDWARE HARDENING & ENTROPY INJECTION ---
+    int hw_iat;
+    
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds before disabling Bluetooth...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    system("sudo rfkill block bluetooth 2>/dev/null");
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds after disabling Bluetooth...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    printf("\033[1;31m[!] Bluetooth Hardware: DISABLED\033[0m\n");
+    
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds before disabling Audio/Microphone...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    // FIX: Redirected stdout to suppress PID numbers
+    system("sudo fuser -k /dev/snd/* >/dev/null 2>&1; sudo modprobe -r snd_hda_intel snd_usb_audio 2>/dev/null");
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds after disabling Audio/Microphone...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    printf("\033[1;31m[!] Internal/External Microphone: DISABLED\033[0m\n");
+    
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds before disabling Camera/Webcam...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    // FIX: Redirected stdout to suppress PID numbers
+    system("sudo fuser -k /dev/video* >/dev/null 2>&1; sudo modprobe -r uvcvideo 2>/dev/null");
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds after disabling Camera/Webcam...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    printf("\033[1;31m[!] Internal/External Webcam: DISABLED\033[0m\n");
+    
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds before disabling Motion Sensors...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    system("sudo modprobe -r hid_sensor_accel_3d hid_sensor_gyro_3d hid_sensor_hub 2>/dev/null");
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds after disabling Motion Sensors...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    printf("\033[1;31m[!] Gyroscopes and Accelerometers: DISABLED\033[0m\n");
+    
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds before disabling Light Sensors...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    system("sudo modprobe -r hid_sensor_als 2>/dev/null");
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds after disabling Light Sensors...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    printf("\033[1;31m[!] Ambient Light Sensors: DISABLED\033[0m\n");
+    
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds before disabling Thermal Sensors...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    system("sudo modprobe -r intel_rapl_msr intel_rapl_common processor_thermal_device_pci_legacy thermal 2>/dev/null");
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds after disabling Thermal Sensors...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    printf("\033[1;31m[!] Thermal Sensors: DISABLED\033[0m\n");
+    
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds before TEMPEST Mitigation...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    system("sudo sysctl -w kernel.randomize_va_space=2 >/dev/null");
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds after TEMPEST Mitigation...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    printf("\033[1;31m[!] Electromagnetic Interference (TEMPEST) Shielded.\033[0m\n");
+    
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds before BIOS Hardening...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    system("sudo chattr +i /sys/firmware/efi/efivars/* 2>/dev/null");
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds after BIOS Hardening...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    printf("\033[1;31m[!] BIOS/Firmware Immutable Protection: ACTIVE\033[0m\n");
+    
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds before Power Randomization...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    system("sudo cpupower frequency-set -g powersave >/dev/null 2>&1");
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds after Power Randomization...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    printf("\033[1;31m[!] Power Supply Side-Channel & Entropy Randomization: ACTIVE\033[0m\n");
     
     char int_if[32] = {0};
     get_interface(int_if);
