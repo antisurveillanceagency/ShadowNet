@@ -19,7 +19,8 @@ if [[ $EUID -ne 0 ]]; then
 	DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	tor obfs4proxy iptables-persistent iproute2 curl \
 	macchanger haveged net-tools bind9-dnsutils \
-	adjtimex ethtool tshark build-essential lokinet xdotool
+	adjtimex ethtool tshark build-essential lokinet xdotool \
+	rfkill linux-cpupower
 	
 	chmod +x shadownet.c
 	chmod +x heartbeat.c
