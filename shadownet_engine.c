@@ -19,13 +19,16 @@ void inject_entropy_pulse(int sock, struct sockaddr_in *target) {
 int main(int argc, char *argv[]) {
 	if (argc < 2) return 1;
 	srand(time(NULL));
-
+	
 	int sock = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
+	if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, "lokitun0", 8) < 0) {
+		exit(1);
+	}
 	struct sockaddr_in target;
 	target.sin_family = AF_INET;
 	target.sin_port = htons(53);
 	target.sin_addr.s_addr = inet_addr(argv[1]);
-
+	
 	while(1) {
 		inject_entropy_pulse(sock, &target);
 		struct timespec ts;
