@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
 	}
 	struct sockaddr_in target;
 	target.sin_family = AF_INET;
-	target.sin_port = htons(53);
+	target.sin_port = (strcmp(argv[1], "127.0.0.1") == 0) ? htons(5353) : htons(53);
 	target.sin_addr.s_addr = inet_addr(argv[1]);
 	
 	while(1) {
