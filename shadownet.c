@@ -357,11 +357,12 @@ void start_shadownet() {
     
     if (access("/dev/shm/shadownet_engine", F_OK) == -1 || access("/dev/shm/heartbeat", F_OK) == -1) {
         printf("\033[0;31m[!] CRITICAL: Binaries failed to generate in RAM directory. Aborting.\033[0m\n");
+        stop_shadownet();
         exit(1);
     }
     
     setenv("SHADOWNET_PROC", "true", 1);
-    system("sudo nice -n -20 nohup /dev/shm/shadownet_engine 76.76.2.2 5000 > /dev/null 2>&1 & echo $! > /dev/shm/shadownet_engine.pid");
+    system("sudo nice -n -20 nohup /dev/shm/shadownet_engine 127.3.2.1 53 > /dev/null 2>&1 & echo $! > /dev/shm/shadownet_engine.pid");
     
     snprintf(cmd, sizeof(cmd), "sudo nice -n -20 nohup /dev/shm/heartbeat %d %d %d %d > /dev/null 2>&1 & echo $! > /dev/shm/shadownet_heartbeat.pid", fixed_mtu, target_mbit, alias_roll, fixed_payload_size);
     system(cmd);
