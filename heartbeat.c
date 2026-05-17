@@ -53,9 +53,9 @@ int main(int argc, char *argv[]) {
 	int is_fixed = (argc > 3) ? atoi(argv[3]) : 0;
 	int fixed_payload_size = (argc > 4) ? atoi(argv[4]) : ((rand() % (max_mtu - 500 + 1)) + 500 - 42);
 	
-	const char *destinations[] = {"76.76.2.2", "84.200.69.80", "1.1.1.1", "9.9.9.9"};
-	const char *fake_domains[] = {"google.com", "bing.com", "duckduckgo.com", "protonmail.com", "github.com"};
-	int num_dests = 4;
+	const char *destinations[] = {"127.3.2.1", "127.0.0.1"};
+	const char *fake_domains[] = {"site1.onion", "site2.loki", "site3.onion", "site4.loki", "site5.onion"};
+	int num_dests = 2;
 	int num_domains = 5;
 	
 	srand(time(NULL));
@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
 			iph->protocol = IPPROTO_UDP; iph->daddr = sin.sin_addr.s_addr;
 			iph->check = csum((unsigned short *) packet, iph->tot_len);
 			udph->source = htons(49152 + (rand() % 16383));
-			udph->dest = htons(53);
+			udph->dest = (strcmp(destinations[dest_idx], "127.0.0.1") == 0) ? htons(5353) : htons(53);
 			udph->len = htons(sizeof(struct udphdr) + 32);
 			char *dns_data = packet + sizeof(struct iphdr) + sizeof(struct udphdr);
 			dns_data[0] = rand() % 255; dns_data[1] = rand() % 255; dns_data[2] = 0x01;
