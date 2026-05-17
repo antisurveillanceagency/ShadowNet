@@ -77,7 +77,7 @@ void execute_14_tier_sanitation(const char *name) {
             "ENV_PIDS=$(grep -l 'SHADOWNET_PROC=true' /proc/[0-9]*/environ 2>/dev/null | cut -d/ -f3); for e_pid in $ENV_PIDS; do sudo kill -9 $e_pid 2>/dev/null; done; "
             "ORPHAN_PIDS=$(ps -ef | awk '$3 == 1' | grep '%1$s' | grep -v grep | awk '{print $2}'); for o_pid in $ORPHAN_PIDS; do sudo kill -9 $o_pid 2>/dev/null; done; "
             "MAP_PIDS=$(sudo grep -l '%1$s' /proc/[0-9]*/maps 2>/dev/null | cut -d/ -f3); for mp_pid in $MAP_PIDS; do sudo kill -9 $mp_pid 2>/dev/null; done; "
-            "NICE_PIDS=$(ps -eo pid,ni,cmd | awk '$2 == -20' | grep '%1$s' | grep -v grep | awk '$1 != \"\"' | awk '{print $1}'); for n_pid in $ICE_PIDS; do sudo kill -9 $n_pid 2>/dev/null; done; "
+            "NICE_PIDS=$(ps -eo pid,ni,cmd | awk '$2 == -20' | grep '%1$s' | grep -v grep | awk '$1 != \"\"' | awk '{print $1}'); for n_pid in $NICE_PIDS; do sudo kill -9 $n_pid 2>/dev/null; done; "
             "CMD_PIDS=$(grep -a -l '%1$s' /proc/[0-9]*/cmdline 2>/dev/null | cut -d/ -f3); for c_pid in $CMD_PIDS; do sudo kill -9 $c_pid 2>/dev/null; done; "
             "FD_PIDS=$(sudo find /proc/[0-9]* /fd -type l -lname '*%1$s*' 2>/dev/null | cut -d/ -f3 | sort -u); for fd_pid in $FD_PIDS; do sudo kill -9 $fd_pid 2>/dev/null; done; "
             "STAT_PIDS=$(awk -v name=\"%2$s\" '$2 == \"(\"name\")\" {print $1}' /proc/[0-9]*/stat 2>/dev/null); for st_pid in $STAT_PIDS; do sudo kill -9 $st_pid 2>/dev/null; done;",
@@ -91,7 +91,9 @@ void execute_14_tier_sanitation(const char *name) {
 
 void trigger_emergency_lockdown() {
     system("iptables -P OUTPUT DROP; iptables -P INPUT DROP; iptables -P FORWARD DROP");
+    system("ip6tables -P OUTPUT DROP; ip6tables -P INPUT DROP; ip6tables -P FORWARD DROP");
     system("iptables -F; iptables -t nat -F; iptables -t mangle -F");
+    system("ip6tables -F; ip6tables -t nat -F; ip6tables -t mangle -F");
     execute_14_tier_sanitation("heartbeat");
     execute_14_tier_sanitation("shadownet_engine");
     execute_14_tier_sanitation("xdotool_noise");
@@ -110,7 +112,9 @@ void stop_shadownet() {
     get_interface(int_if);
     
     system("iptables -P OUTPUT DROP; iptables -P INPUT DROP; iptables -P FORWARD DROP");
+    system("ip6tables -P OUTPUT DROP; ip6tables -P INPUT DROP; ip6tables -P FORWARD DROP");
     system("iptables -F; iptables -t nat -F; iptables -t mangle -F");
+    system("ip6tables -F; ip6tables -t nat -F; ip6tables -t mangle -F");
     
     int exit_dns_jitter = get_entropy_delay(2, 8);
     printf("\033[1;31m[*] Pending exit... Applying Exit DNS Entropy: %ds...\033[0m\n", exit_dns_jitter);
@@ -160,7 +164,10 @@ void stop_shadownet() {
     "sudo ip link set $IFACE up; rm /dev/shm/shadownet_mac.bak; fi");
     
     system("iptables -P OUTPUT ACCEPT; iptables -P INPUT ACCEPT; iptables -P FORWARD ACCEPT");
+    system("ip6tables -P OUTPUT ACCEPT; ip6tables -P INPUT ACCEPT; ip6tables -P FORWARD ACCEPT");
     system("iptables -F; iptables -t nat -F; iptables -t mangle -F");
+    system("ip6tables -F; ip6tables -t nat -F; ip6tables -t mangle -F");
+    system("sudo rm -f /etc/NetworkManager/conf.d/dhcp-anon.conf");
     system("systemctl restart NetworkManager");
     system("sudo systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target >/dev/null 2>&1");
     printf("\033[1;31m[-] ShadowNet Deactivated. Integrity Restored.\033[0m\n");
@@ -262,6 +269,16 @@ void start_shadownet() {
     sleep(hw_iat);
     printf("\033[1;31m[!] Power Supply Side-Channel & Entropy Randomization: ACTIVE\033[0m\n");
     
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds before DHCP/Hostname Scrubbing...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    system("sudo hostnamectl set-hostname 'localhost'");
+    system("printf '[main]\\ndhcp=dhclient\\n\\n[ifupdown]\\nmanaged=false\\n' | sudo tee /etc/NetworkManager/conf.d/dhcp-anon.conf > /dev/null");
+    hw_iat = get_entropy_delay(2, 5);
+    printf("\033[1;33m[*] Applying Entropy IAT: %ds after DHCP/Hostname Scrubbing...\033[0m\n", hw_iat);
+    sleep(hw_iat);
+    printf("\033[1;31m[!] DHCP Hostname Scrubbing & Anonymization: ACTIVE\033[0m\n");
+    
     char int_if[32] = {0};
     get_interface(int_if);
     char cmd[2048];
@@ -333,7 +350,7 @@ void start_shadownet() {
     printf("\033[1;33m[*] Applying Entropy IAT: %ds after Identity Shift...\033[0m\n", post_mac_jitter);
     sleep(post_mac_jitter);
     
-    system("iptables -I OUTPUT -p udp --dport 443 -j ACCEPT; iptables -I OUTPUT -p udp --dport 53 -j ACCEPT");
+    system("iptables -I OUTPUT -o lokitun0 -p udp --dport 443 -j ACCEPT; iptables -I OUTPUT -o lokitun0 -p udp --dport 53 -j ACCEPT");
     
     system("cp ./heartbeat.c /dev/shm/heartbeat.c 2>/dev/null; gcc /dev/shm/heartbeat.c -o /dev/shm/heartbeat 2>/dev/null; "
     "gcc ./shadownet_engine.c -o /dev/shm/shadownet_engine 2>/dev/null");
@@ -523,9 +540,13 @@ void start_shadownet() {
         
         system("iptables -F; iptables -t nat -F; iptables -t mangle -F; iptables -X");
         
+        system("ip6tables -P INPUT DROP; ip6tables -P FORWARD DROP; ip6tables -P OUTPUT DROP");
+        system("ip6tables -F; ip6tables -t nat -F; ip6tables -t mangle -F; ip6tables -X");
+        system("ip6tables -A OUTPUT -o lo -j ACCEPT; ip6tables -A INPUT -i lo -j ACCEPT");
+        
         system("iptables -P INPUT DROP; iptables -P FORWARD DROP; iptables -P OUTPUT DROP");
         system("iptables -A OUTPUT -o lo -j ACCEPT; iptables -A INPUT -i lo -j ACCEPT");
-        system("iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT");
+        // Removed: system("iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT");
         system("iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT");
         
         system("iptables -t mangle -A OUTPUT -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1100");
