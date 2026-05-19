@@ -175,7 +175,7 @@ void stop_shadownet() {
 
 void start_shadownet() {
     srand(time(NULL));
-    int alias_roll = get_true_5050();
+    int alias_roll = 1;
     int fixed_mtu = 1400;
     int fixed_payload_size = get_entropy_delay(500, fixed_mtu - 42);
     
@@ -460,11 +460,7 @@ void start_shadownet() {
         "sudo update-grub; fi");
         system("sudo iw reg set US 2>/dev/null || sudo iw reg set CA 2>/dev/null");
         
-        if (alias_roll == 1) {
-            printf("\033[1;32m[+] Session Identity Assigned: Alias-Fixed (Assigned Cover Packet Size: %d bytes)\033[0m\n", fixed_payload_size + 42); // +42 accounts for IP+UDP headers
-        } else {
-            printf("\033[1;32m[+] Session Identity Assigned: Alias-Random\033[0m\n");
-        }
+        printf("\033[1;32m[+] Session Identity Assigned: Alias-Fixed (Assigned Cover Packet Size: %d bytes)\033[0m\n", fixed_payload_size + 42); // +42 accounts for IP+UDP headers
         
         printf("\033[0;32m[+] Identity Shifted. Cover Traffic & Temporal Jitter Engaged (Locked at %dMbit in RAM).\033[0m\n", target_mbit);
         printf("\033[1;32m[+] Packet Max MTU Size: %d bytes | Target Rate: %d Mbit.\033[0m\n", fixed_mtu, target_mbit);
