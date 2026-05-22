@@ -16,11 +16,16 @@ if [[ $EUID -ne 0 ]]; then
 	echo "deb https://deb.oxen.io bookworm main" | sudo tee /etc/apt/sources.list.d/oxen.list
 	sudo apt update
 	
+	# Added badvpn (tun2socks) and torsocks
 	DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	tor obfs4proxy iptables-persistent iproute2 curl \
 	macchanger haveged net-tools bind9-dnsutils \
 	adjtimex ethtool tshark build-essential lokinet xdotool \
-	rfkill linux-cpupower
+	rfkill linux-cpupower badvpn torsocks
+	
+	sudo chown -R root:root /var/lib/lokinet
+	sudo chmod 644 /var/lib/lokinet/lokinet.ini
+	sudo systemctl daemon-reload
 	
 	chmod +x shadownet.c
 	chmod +x heartbeat.c
