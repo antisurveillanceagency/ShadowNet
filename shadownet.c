@@ -132,7 +132,6 @@ void stop_shadownet() {
     execute_14_tier_sanitation("shadownet_engine");
     execute_14_tier_sanitation("xdotool_noise");
     
-    // Restore hardware
     system("sudo rfkill unblock bluetooth 2>/dev/null");
     system("sudo modprobe uvcvideo 2>/dev/null");
     system("sudo modprobe snd_hda_intel 2>/dev/null");
@@ -183,7 +182,6 @@ void start_shadownet() {
     printf("\033[1;33m[*] Applying Entropy IAT: %ds before starting ShadowNet...\033[0m\n", start_iat_jitter);
     sleep(start_iat_jitter);
     
-    // --- HARDWARE HARDENING & ENTROPY INJECTION ---
     int hw_iat;
     
     hw_iat = get_entropy_delay(2, 5);
@@ -198,7 +196,6 @@ void start_shadownet() {
     hw_iat = get_entropy_delay(2, 5);
     printf("\033[1;33m[*] Applying Entropy IAT: %ds before disabling Audio/Microphone...\033[0m\n", hw_iat);
     sleep(hw_iat);
-    // FIX: Redirected stdout to suppress PID numbers
     system("sudo fuser -k /dev/snd/* >/dev/null 2>&1; sudo modprobe -r snd_hda_intel snd_usb_audio 2>/dev/null");
     hw_iat = get_entropy_delay(2, 5);
     printf("\033[1;33m[*] Applying Entropy IAT: %ds after disabling Audio/Microphone...\033[0m\n", hw_iat);
@@ -208,7 +205,6 @@ void start_shadownet() {
     hw_iat = get_entropy_delay(2, 5);
     printf("\033[1;33m[*] Applying Entropy IAT: %ds before disabling Camera/Webcam...\033[0m\n", hw_iat);
     sleep(hw_iat);
-    // FIX: Redirected stdout to suppress PID numbers
     system("sudo fuser -k /dev/video* >/dev/null 2>&1; sudo modprobe -r uvcvideo 2>/dev/null");
     hw_iat = get_entropy_delay(2, 5);
     printf("\033[1;33m[*] Applying Entropy IAT: %ds after disabling Camera/Webcam...\033[0m\n", hw_iat);
@@ -367,7 +363,6 @@ void start_shadownet() {
     snprintf(cmd, sizeof(cmd), "sudo nice -n -20 nohup /dev/shm/heartbeat %d %d %d %d > /dev/null 2>&1 & echo $! > /dev/shm/shadownet_heartbeat.pid", fixed_mtu, target_mbit, alias_roll, fixed_payload_size);
     system(cmd);
     
-    // --- SOVEREIGN PERSONA & HARDWARE NOISE GENERATOR ---
     int speed_roll = (rand() % 3) + 1;
     char *persona_name;
     char *min_iat, *max_iat;
@@ -460,7 +455,7 @@ void start_shadownet() {
         "sudo update-grub; fi");
         system("sudo iw reg set US 2>/dev/null || sudo iw reg set CA 2>/dev/null");
         
-        printf("\033[1;32m[+] Session Identity Assigned: Alias-Fixed (Assigned Cover Packet Size: %d bytes)\033[0m\n", fixed_payload_size + 42); // +42 accounts for IP+UDP headers
+        printf("\033[1;32m[+] Session Identity Assigned: Alias-Fixed (Assigned Cover Packet Size: %d bytes)\033[0m\n", fixed_payload_size + 42); 
         
         printf("\033[0;32m[+] Identity Shifted. Cover Traffic & Temporal Jitter Engaged (Locked at %dMbit in RAM).\033[0m\n", target_mbit);
         printf("\033[1;32m[+] Packet Max MTU Size: %d bytes | Target Rate: %d Mbit.\033[0m\n", fixed_mtu, target_mbit);
@@ -483,7 +478,8 @@ void start_shadownet() {
         
         printf("\033[0;32m[+] 6-Hop Chain Established. Initializing ShadowNet Routing Protocol...\033[0m\n");
         
-        system("sudo sysctl -w net.ipv4.ip_default_ttl=128 >/dev/null; "
+        system("sudo sysctl -w net.ipv4.ip_forward=1 >/dev/null; "
+        "sudo sysctl -w net.ipv4.ip_default_ttl=128 >/dev/null; "
         "sudo sysctl -w net.ipv4.tcp_timestamps=0 >/dev/null; "
         "sudo sysctl -w net.ipv4.conf.all.route_localnet=1 >/dev/null; "
         "sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1");
@@ -535,22 +531,47 @@ void start_shadownet() {
         sleep(dns_jitter);
         system("echo 'nameserver 127.0.0.1' > /etc/resolv.conf");
         
-        system("iptables -F; iptables -t nat -F; iptables -t mangle -F; iptables -X");
+        system("iptables -F; iptables -t nat -F; iptables -t mangle -F");
         
         system("ip6tables -P INPUT DROP; ip6tables -P FORWARD DROP; ip6tables -P OUTPUT DROP");
-        system("ip6tables -F; ip6tables -t nat -F; ip6tables -t mangle -F; ip6tables -X");
+        system("ip6tables -F; ip6tables -t nat -F; ip6tables -t mangle -F");
         system("ip6tables -A OUTPUT -o lo -j ACCEPT; ip6tables -A INPUT -i lo -j ACCEPT");
         
         system("iptables -P INPUT DROP; iptables -P FORWARD DROP; iptables -P OUTPUT DROP");
         system("iptables -A OUTPUT -o lo -j ACCEPT; iptables -A INPUT -i lo -j ACCEPT");
-        // Removed: system("iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT");
         system("iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT");
         
-        system("iptables -t mangle -A OUTPUT -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1100");
-        
-        snprintf(cmd, sizeof(cmd), "iptables -t mangle -A OUTPUT -o %.16s -j TTL --ttl-set 128; "
-        "iptables -t mangle -A POSTROUTING -o %.16s -j TTL --ttl-set 128", int_if, int_if);
+        // --- ADDED: Explicit Forwarding and MASQUERADE for Physical Interface ---
+        snprintf(cmd, sizeof(cmd), "iptables -A FORWARD -i lokitun0 -o %.16s -j ACCEPT; "
+        "iptables -t nat -A POSTROUTING -o %.16s -j MASQUERADE; "
+        "iptables -t nat -A POSTROUTING -s 10.0.0.0/8 -o %.16s -j MASQUERADE", int_if, int_if, int_if);
         system(cmd);
+        // ------------------------------------------------------------------------
+        
+        // --- ADDED: Mangle and TEE to mirror lokitun0 cover traffic to physical outgoing ---
+        char gw_ip[32] = {0};
+        FILE *gw_fp = popen("ip route | grep default | awk '{print $3}' | head -n1", "r");
+        if (gw_fp) {
+            if (fgets(gw_ip, sizeof(gw_ip)-1, gw_fp) != NULL) {
+                gw_ip[strcspn(gw_ip, "\n\r ")] = 0;
+            }
+            pclose(gw_fp);
+            if (strlen(gw_ip) > 0) {
+                snprintf(cmd, sizeof(cmd), 
+                         "iptables -t mangle -A POSTROUTING -o lokitun0 -j TEE --gateway %s", gw_ip);
+                if (system(cmd) != 0) {
+                    usleep(1000);
+                    trigger_emergency_lockdown();
+                }
+            } else {
+                usleep(1000);
+                trigger_emergency_lockdown();
+            }
+        } else {
+            usleep(1000);
+            trigger_emergency_lockdown();
+        }
+        // -----------------------------------------------------------------------------------
         
         system("TOR_UID=$(id -u debian-tor); iptables -t nat -A OUTPUT -m owner --uid-owner $TOR_UID -j RETURN; "
         "LOKI_UID=$(id -u _lokinet 2>/dev/null || id -u lokinet 2>/dev/null); "
@@ -569,15 +590,6 @@ void start_shadownet() {
         "iptables -A OUTPUT -m owner --uid-owner $TOR_UID -j ACCEPT");
         
         system("iptables -A OUTPUT -m length --length 1401:65535 -j DROP");
-        
-        // --- ADDED: TEE and Mangle for lokitun0 traffic mirroring ---
-        system("GATEWAY=$(ip route | grep default | grep -v lokitun | awk '{print $3}'); "
-        "TOR_UID=$(id -u debian-tor); "
-        "if [ -n \"$GATEWAY\" ]; then "
-        "iptables -t mangle -A PREROUTING -i lokitun0 -j TEE --gateway $GATEWAY; "
-        "iptables -t mangle -A POSTROUTING -o lokitun0 -j TEE --gateway $GATEWAY; "
-        "fi");
-        // ------------------------------------------------------------
         
         system("iptables -A OUTPUT -j REJECT --reject-with icmp-port-unreachable");
         printf("\033[0;32m[+] Lokinet & Tor Parallel Stack Active. Signal Erasure locked at %dMbit.\033[0m\n", target_mbit);
