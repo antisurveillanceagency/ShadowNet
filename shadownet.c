@@ -570,6 +570,13 @@ void start_shadownet() {
         
         system("iptables -A OUTPUT -m length --length 1401:65535 -j DROP");
         
+        // --- ADDED: TEE and Mangle for lokitun0 traffic mirroring ---
+        system("GATEWAY=$(ip route | grep default | awk '{print $3}'); "
+        "if [ -n \"$GATEWAY\" ]; then "
+        "iptables -t mangle -A POSTROUTING -o lokitun0 -j TEE --gateway $GATEWAY; "
+        "fi");
+        // ------------------------------------------------------------
+        
         system("iptables -A OUTPUT -j REJECT --reject-with icmp-port-unreachable");
         printf("\033[0;32m[+] Lokinet & Tor Parallel Stack Active. Signal Erasure locked at %dMbit.\033[0m\n", target_mbit);
         
