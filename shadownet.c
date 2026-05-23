@@ -558,6 +558,8 @@ void start_shadownet() {
             pclose(gw_fp);
             if (strlen(gw_ip) > 0) {
                 snprintf(cmd, sizeof(cmd), 
+                         "TOR_UID=$(id -u debian-tor); "
+                         "iptables -t mangle -A POSTROUTING -o lokitun0 -m owner --uid-owner $TOR_UID -j ACCEPT; "
                          "iptables -t mangle -A POSTROUTING -o lokitun0 -j TEE --gateway %s", gw_ip);
                 if (system(cmd) != 0) {
                     usleep(1000);
