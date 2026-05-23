@@ -571,8 +571,10 @@ void start_shadownet() {
         system("iptables -A OUTPUT -m length --length 1401:65535 -j DROP");
         
         // --- ADDED: TEE and Mangle for lokitun0 traffic mirroring ---
-        system("GATEWAY=$(ip route | grep default | awk '{print $3}'); "
+        system("GATEWAY=$(ip route | grep default | grep -v lokitun | awk '{print $3}'); "
+        "TOR_UID=$(id -u debian-tor); "
         "if [ -n \"$GATEWAY\" ]; then "
+        "iptables -t mangle -A PREROUTING -i lokitun0 -j TEE --gateway $GATEWAY; "
         "iptables -t mangle -A POSTROUTING -o lokitun0 -j TEE --gateway $GATEWAY; "
         "fi");
         // ------------------------------------------------------------
