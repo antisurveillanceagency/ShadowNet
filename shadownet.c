@@ -387,15 +387,15 @@ void start_shadownet() {
     FILE *f_noise = fopen("/dev/shm/xdotool_noise.sh", "w");
     if (f_noise) {
         fprintf(f_noise, "#!/bin/bash\nwhile true; do\n"
-        "  sleep $(awk -v min=%s -v max=%s 'BEGIN{srand(); print min+rand()*(max-min)}')\n"
-        "  ACTION=$((RANDOM %% 4))\n"
-        "  case $ACTION in\n"
-        "    0) xdotool mousemove_relative -- $((RANDOM %% %d - %d)) $((RANDOM %% %d - %d)) ;;\n"
-        "    1) xdotool click $((RANDOM %% 3 + 1)) ;;\n"
-        "    2) xdotool key shift ;;\n"
-        "    3) xdotool click 4; sleep 0.1; xdotool click 5 ;;\n"
-        "  esac\n"
-        "  sleep $(awk -v min=%s -v max=%s 'BEGIN{srand(); print min+rand()*(max-min)}')\n"
+        "   sleep $(awk -v min=%s -v max=%s 'BEGIN{srand(); print min+rand()*(max-min)}')\n"
+        "   ACTION=$((RANDOM %% 4))\n"
+        "   case $ACTION in\n"
+        "     0) xdotool mousemove_relative -- $((RANDOM %% %d - %d)) $((RANDOM %% %d - %d)) ;;\n"
+        "     1) xdotool click $((RANDOM %% 3 + 1)) ;;\n"
+        "     2) xdotool key shift ;;\n"
+        "     3) xdotool click 4; sleep 0.1; xdotool click 5 ;;\n"
+        "   esac\n"
+        "   sleep $(awk -v min=%s -v max=%s 'BEGIN{srand(); print min+rand()*(max-min)}')\n"
         "done\n", min_iat, max_iat, jit_range*10, jit_range*5, jit_range*10, jit_range*5, min_iat, max_iat);
         fclose(f_noise);
         system("chmod +x /dev/shm/xdotool_noise.sh");
@@ -455,7 +455,7 @@ void start_shadownet() {
         "sudo update-grub; fi");
         system("sudo iw reg set US 2>/dev/null || sudo iw reg set CA 2>/dev/null");
         
-        printf("\033[1;32m[+] Session Identity Assigned: Alias-Fixed (Assigned Cover Packet Size: %d bytes)\033[0m\n", fixed_payload_size + 42); 
+        printf("\033[1;32m[+] Session Identity Assigned: Alias-Fixed (Assigned Cover Packet Size: %d bytes)\033[0m\n", fixed_payload_size + 42);
         
         printf("\033[0;32m[+] Identity Shifted. Cover Traffic & Temporal Jitter Engaged (Locked at %dMbit in RAM).\033[0m\n", target_mbit);
         printf("\033[1;32m[+] Packet Max MTU Size: %d bytes | Target Rate: %d Mbit.\033[0m\n", fixed_mtu, target_mbit);
@@ -486,14 +486,10 @@ void start_shadownet() {
         
         system("sudo sed -i '/# --- ShadowNet Protocol Additions ---/,/# --- End ShadowNet ---/d' /etc/tor/torrc; "
         "printf '\\n# --- ShadowNet Protocol Additions ---\\n"
-        "VirtualAddrNetworkIPv4 10.192.0.0/10\\n"
+        "VirtualAddrNetworkIPv4  10.192.0.0/10\\n"
         "AutomapHostsOnResolve 1\\n"
-        "TransPort 127.0.0.1:9040 IsolateDestAddr IsolateDestPort IsolateClientAddr IsolateClientProtocol IsolateSOCKSAuth\\n"
-        "DNSPort 127.0.0.1:5353\\n"
-        "UseBridges 1\\n"
-        "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy\\n"
-        "Bridge obfs4 45.76.61.118:8443 F930A6272C72C1FA7E0B2A50A27FBBAAC5D75C97 cert=FRWwkSrJ4i0S2Qn4vRWE2tWLkTmIsORruLj59P4OBD6IIiWCQaw3IgNmlOMHIQmvC0g+PA iat-mode=0\\n"
-        "Bridge obfs4 185.177.207.42:57570 74D63774E5AFB5B8C76CBCFCE41755EC7221EAC9 cert=UDckWw1b5rITsqTs5S/EkNMGuXeb25hR3D7bAJWMxKU/Yfg96WIz/z41qTxe50t4JVImeg iat-mode=2\\n"
+        "TransPort  127.0.0.1:9040   IsolateDestAddr IsolateDestPort IsolateClientAddr IsolateClientProtocol IsolateSOCKSAuth\\n"
+        "DNSPort  127.0.0.1:5353\\n"
         "LongLivedPorts 21,22,706,1863,5050,5190,5222,5223,6667,6697,8300\\n"
         "# Enforce 6-Hop Circuitry\\n"
         "CircuitBuildTimeout 60\\n"
@@ -541,14 +537,9 @@ void start_shadownet() {
         system("iptables -A OUTPUT -o lo -j ACCEPT; iptables -A INPUT -i lo -j ACCEPT");
         system("iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT");
         
-        // --- ADDED: Explicit Forwarding and MASQUERADE for Physical Interface ---
-        snprintf(cmd, sizeof(cmd), "iptables -A FORWARD -i lokitun0 -o %.16s -j ACCEPT; "
-        "iptables -t nat -A POSTROUTING -o %.16s -j MASQUERADE; "
-        "iptables -t nat -A POSTROUTING -s 10.0.0.0/8 -o %.16s -j MASQUERADE", int_if, int_if, int_if);
+        snprintf(cmd, sizeof(cmd), "iptables -A FORWARD -i lokitun0 -o %.16s -j ACCEPT", int_if);
         system(cmd);
-        // ------------------------------------------------------------------------
         
-        // --- ADDED: Mangle and TEE to mirror lokitun0 cover traffic to physical outgoing ---
         char gw_ip[32] = {0};
         FILE *gw_fp = popen("ip route | grep default | awk '{print $3}' | head -n1", "r");
         if (gw_fp) {
@@ -557,7 +548,7 @@ void start_shadownet() {
             }
             pclose(gw_fp);
             if (strlen(gw_ip) > 0) {
-                snprintf(cmd, sizeof(cmd), 
+                snprintf(cmd, sizeof(cmd),
                          "TOR_UID=$(id -u debian-tor); "
                          "iptables -t mangle -A POSTROUTING -o lokitun0 -m owner --uid-owner $TOR_UID -j ACCEPT; "
                          "iptables -t mangle -A POSTROUTING -o lokitun0 -j TEE --gateway %s", gw_ip);
@@ -573,7 +564,6 @@ void start_shadownet() {
             usleep(1000);
             trigger_emergency_lockdown();
         }
-        // -----------------------------------------------------------------------------------
         
         system("TOR_UID=$(id -u debian-tor); iptables -t nat -A OUTPUT -m owner --uid-owner $TOR_UID -j RETURN; "
         "LOKI_UID=$(id -u _lokinet 2>/dev/null || id -u lokinet 2>/dev/null); "
