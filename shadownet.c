@@ -536,11 +536,10 @@ void start_shadownet() {
 			if (system(cmd) != 0) {
 				usleep(1000);
 				trigger_emergency_lockdown();
+			} } else {
+				usleep(1000);
+				trigger_emergency_lockdown();
 			}
-		} else {
-			usleep(1000);
-			trigger_emergency_lockdown();
-		}
 	} else {
 		usleep(1000);
 		trigger_emergency_lockdown();
@@ -581,6 +580,12 @@ void start_shadownet() {
 	
 	printf("\033[0;32m[+] Lokinet & Tor Parallel Stack Active. Signal Erasure locked at %dMbit.\033[0m\n", target_mbit);
 	printf("\033[1;31m[!] EMERGENCY KILLSWITCH ENGAGED: Realistic 100ms Guarding Active...\033[0m\n");
+	
+	system("echo \"200 i2p_table\" | sudo tee -a /etc/iproute2/rt_tables");
+	system("sudo ip rule add from 172.16.0.1 table i2p_table");
+	system("sudo ip route add default dev lokitun0 table i2p_table");
+	system("sudo ip rule add uidrange 1000-1000 table i2p_table");
+	system("sudo ip route flush cache");
 	
 	unsigned long long last_loki_bytes = 0;
 	unsigned long long last_phys_bytes = 0;
@@ -638,8 +643,7 @@ void start_shadownet() {
 				packet_debt -= phys_gain;
 			}
 			if (packet_debt > 0) {
-				if (phys_gain == 0) {
-					strike_count++;
+				if (phys_gain == 0) { strike_count++;
 				} else {
 					strike_count = 0;
 				}
