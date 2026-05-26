@@ -93,7 +93,8 @@ void trigger_emergency_lockdown() {
 	execute_14_tier_sanitation("heartbeat");
 	execute_14_tier_sanitation("shadownet_engine");
 	execute_14_tier_sanitation("xdotool_noise");
-	system("sudo systemctl stop lokinet tor");
+	execute_14_tier_sanitation("i2pd");
+	system("sudo systemctl stop lokinet tor i2pd");
 	printf("\n\033[0;31m\a[!!!] SHADOWNET EMERGENCY LOCKDOWN ENGAGED. INTERNET PERMANENTLY KILLED.\033[0m\n");
 	printf("\033[1;33m[*] Run 'sudo ./shadownet stop' manually to restore connectivity.\033[0m\n");
 	exit(1);
@@ -116,12 +117,13 @@ void stop_shadownet() {
 	int wait_time = get_entropy_delay(5, 60);
 	printf("\033[1;31m[*] Finalizing teardown... Waiting %d seconds.\033[0m\n", wait_time);
 	sleep(wait_time);
-	system("sudo systemctl stop lokinet 2>/dev/null");
+	system("sudo systemctl stop lokinet i2pd 2>/dev/null");
 	system("sudo systemctl unmask chrony ntp systemd-timesyncd 2>/dev/null");
 	system("sudo systemctl start chrony ntp systemd-timesyncd 2>/dev/null");
 	execute_14_tier_sanitation("heartbeat");
 	execute_14_tier_sanitation("shadownet_engine");
 	execute_14_tier_sanitation("xdotool_noise");
+	execute_14_tier_sanitation("i2pd");
 	system("sudo rfkill unblock bluetooth 2>/dev/null");
 	system("sudo modprobe uvcvideo 2>/dev/null");
 	system("sudo modprobe snd_hda_intel 2>/dev/null");
@@ -261,7 +263,8 @@ void start_shadownet() {
 	execute_14_tier_sanitation("heartbeat");
 	execute_14_tier_sanitation("shadownet_engine");
 	execute_14_tier_sanitation("xdotool_noise");
-	system("sudo systemctl stop chrony ntp systemd-timesyncd 2>/dev/null");
+	execute_14_tier_sanitation("i2pd");
+	system("sudo systemctl stop chrony ntp systemd-timesyncd i2pd 2>/dev/null");
 	system("sudo systemctl mask chrony ntp systemd-timesyncd 2>/dev/null");
 	
 	if (system("ps -ef | grep 'heartbeat\\|shadownet_engine' | grep -v grep > /dev/null 2>&1") == 0) {
@@ -297,6 +300,11 @@ void start_shadownet() {
 	int post_loki_iat = get_entropy_delay(15, 30);
 	printf("\033[1;33m[*] Applying Bootstrap Entropy: %ds allowing Lokinet to build paths...\033[0m\n", post_loki_iat);
 	sleep(post_loki_iat);
+	
+	printf("\033[1;33m[*] Applying Entropy IAT: %ds before i2pd Initialization...\033[0m\n", get_entropy_delay(6, 12));
+	printf("\033[1;36m[*] Rewriting and Hardening i2pd Interface Parameters...\033[0m\n");
+	system("printf 'ifname = lokitun0\\nifname4 = 172.16.0.1\\naddress4 = 172.16.0.1\\nport = 4567\\nipv4 = true\\nipv6 = false\\n[ntcp2]\\nenabled = true\\nport = 4567\\n[ssu2]\\n[http]\\nenabled = true\\naddress = 172.16.0.1\\nport = 7070\\n[httpproxy]\\nenabled = true\\naddress = 172.16.0.1\\nport = 4444\\n[socksproxy]\\nenabled = true\\naddress = 172.16.0.1\\nport = 4447\\n[sam]\\nenabled = true\\naddress = 172.16.0.1\\nport = 7656\\nportudp = 7655\\n[bob]\\nenabled = true\\naddress = 172.16.0.1\\nport = 2827\\n[i2cp]\\nenabled = true\\naddress = 172.16.0.1\\nport = 7654\\n[i2pcontrol]\\nenabled = true\\naddress = 172.16.0.1\\nport = 7650\\n[precomputation]\\n[upnp]\\n[meshnets]\\n[reseed]\\nverify = true\\n[addressbook]\\n[limits]\\n[trust]\\n[exploratory]\\n[persist]\\n' | sudo tee /etc/i2pd/i2pd.conf > /dev/null");
+	system("sudo systemctl start i2pd");
 	
 	snprintf(cmd, sizeof(cmd), "sudo ip link set %.16s mtu %d", int_if, fixed_mtu);
 	system(cmd);
@@ -519,10 +527,11 @@ void start_shadownet() {
 		}
 		pclose(gw_fp);
 		if (strlen(gw_ip) > 0) {
-			snprintf(cmd, sizeof(cmd), "TOR_UID=$(id -u debian-tor); "
-			"iptables -t mangle -A OUTPUT -m owner --uid-owner $TOR_UID -j MARK --set-mark 1; "
+			snprintf(cmd, sizeof(cmd), "TOR_UID=$(id -u debian-tor); I2PD_UID=$(id -u i2pd 2>/dev/null); "
+			"[ -n \"$TOR_UID\" ] && iptables -t mangle -A OUTPUT -m owner --uid-owner $TOR_UID -j MARK --set-mark 1; "
 			"iptables -A OUTPUT -o %.16s -m mark --mark 1 -j ACCEPT; "
-			"iptables -t mangle -A POSTROUTING -o lokitun0 -m owner --uid-owner $TOR_UID -j ACCEPT; "
+			"[ -n \"$TOR_UID\" ] && iptables -t mangle -A POSTROUTING -o lokitun0 -m owner --uid-owner $TOR_UID -j ACCEPT; "
+			"[ -n \"$I2PD_UID\" ] && iptables -t mangle -A POSTROUTING -o lokitun0 -m owner --uid-owner $I2PD_UID -j ACCEPT; "
 			"iptables -t mangle -A POSTROUTING -o lokitun0 -j TEE --gateway %s", int_if, gw_ip);
 			if (system(cmd) != 0) {
 				usleep(1000);
@@ -539,17 +548,26 @@ void start_shadownet() {
 	
 	system("TOR_UID=$(id -u debian-tor); "
 	"LOKI_UID=$(id -u _lokinet 2>/dev/null || id -u lokinet 2>/dev/null); "
+	"I2PD_UID=$(id -u i2pd 2>/dev/null); "
 	"if [ -n \"$LOKI_UID\" ]; then "
-	"  iptables -t nat -A OUTPUT -m owner --uid-owner $LOKI_UID -j RETURN; "
-	"  iptables -A OUTPUT -m owner --uid-owner $LOKI_UID -j ACCEPT; "
+	" iptables -t nat -A OUTPUT -m owner --uid-owner $LOKI_UID -j RETURN; "
+	" iptables -A OUTPUT -m owner --uid-owner $LOKI_UID -j ACCEPT; "
+	"fi; "
+	"if [ -n \"$I2PD_UID\" ]; then "
+	" sudo iptables -t mangle -A OUTPUT -m owner --uid-owner $I2PD_UID -j MARK --set-mark 2; "
+	" sudo iptables -A OUTPUT -o lokitun0 -m mark --mark 2 -j ACCEPT; "
+	" sudo iptables -A OUTPUT -m owner --uid-owner $I2PD_UID -o lokitun0 -j ACCEPT; "
+	" sudo iptables -A OUTPUT -m owner --uid-owner $I2PD_UID -j DROP; "
 	"fi; "
 	"iptables -A OUTPUT -o lokitun0 -j ACCEPT; "
-	"iptables -t nat -A OUTPUT -m owner --uid-owner $TOR_UID -j RETURN; "
-	"iptables -A OUTPUT -o lo -m owner --uid-owner $TOR_UID -j ACCEPT; "
-	"iptables -A OUTPUT -o lokitun0 -m owner --uid-owner $TOR_UID -j ACCEPT; "
-	"sudo iptables -A OUTPUT -m owner --uid-owner $TOR_UID -j DROP; "
-	"sudo iptables -A OUTPUT -m owner --uid-owner $TOR_UID -o lokitun0 -j ACCEPT; "
-	"iptables -A OUTPUT ! -o lokitun0 -m owner --uid-owner $TOR_UID -j DROP; "
+	"[ -n \"$TOR_UID\" ] && iptables -t nat -A OUTPUT -m owner --uid-owner $TOR_UID -j RETURN; "
+	"[ -n \"$TOR_UID\" ] && iptables -A OUTPUT -o lo -m owner --uid-owner $TOR_UID -j ACCEPT; "
+	"[ -n \"$TOR_UID\" ] && iptables -A OUTPUT -o lokitun0 -m owner --uid-owner $TOR_UID -j ACCEPT; "
+	"[ -n \"$I2PD_UID\" ] && iptables -A OUTPUT -o lokitun0 -m owner --uid-owner $I2PD_UID -j ACCEPT; "
+	"[ -n \"$TOR_UID\" ] && sudo iptables -A OUTPUT -m owner --uid-owner $TOR_UID -j DROP; "
+	"[ -n \"$TOR_UID\" ] && sudo iptables -A OUTPUT -m owner --uid-owner $TOR_UID -o lokitun0 -j ACCEPT; "
+	"[ -n \"$TOR_UID\" ] && iptables -A OUTPUT ! -o lokitun0 -m owner --uid-owner $TOR_UID -j DROP; "
+	"[ -n \"$I2PD_UID\" ] && iptables -A OUTPUT ! -o lokitun0 -m owner --uid-owner $I2PD_UID -j DROP; "
 	"iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5353; "
 	"iptables -t nat -A OUTPUT -p tcp --dport 53 -j REDIRECT --to-ports 5353; "
 	"iptables -A OUTPUT -p udp --dport 53 ! -d 127.0.0.1 -j DROP; "
@@ -580,7 +598,7 @@ void start_shadownet() {
 		
 		int current_rf = get_entropy_delay(8, 20);
 		char rf_cmd[256];
-		snprintf(rf_cmd, sizeof(rf_cmd), "sudo iw dev %s set txpower limit %d00 2>/dev/null", int_if, current_rf);
+		snprintf(rf_cmd, sizeof(rf_cmd), "sudo iw dev %s set txpower limit %d00 2>/dev/null", int_if);
 		system(rf_cmd);
 		
 		if (system("iw reg get | grep -q 'country GB'") == 0) {
@@ -590,7 +608,7 @@ void start_shadownet() {
 		rf_iat.tv_nsec = (rand() % 500000);
 		nanosleep(&rf_iat, NULL);
 		
-		int proc_missing = (system("ps -ef | grep '/dev/shm/shadownet_engine' | grep -v grep > /dev/null") != 0 || system("ps -ef | grep '/dev/shm/heartbeat' | grep -v grep > /dev/null") != 0 || system("ps -ef | grep '/dev/shm/xdotool_noise' | grep -v grep > /dev/null") != 0 || system("ps -ef | grep '/usr/bin/tor' | grep -v grep > /dev/null") != 0 || system("systemctl is-active --quiet lokinet") != 0);
+		int proc_missing = (system("ps -ef | grep '/dev/shm/shadownet_engine' | grep -v grep > /dev/null") != 0 || system("ps -ef | grep '/dev/shm/heartbeat' | grep -v grep > /dev/null") != 0 || system("ps -ef | grep '/dev/shm/xdotool_noise' | grep -v grep > /dev/null") != 0 || system("ps -ef | grep '/usr/bin/tor' | grep -v grep > /dev/null") != 0 || system("systemctl is-active --quiet lokinet") != 0 || system("systemctl is-active --quiet i2pd") != 0);
 		snprintf(traffic_check_cmd, sizeof(traffic_check_cmd), "ip link show %s | grep -q 'UP'", int_if);
 		int phys_dead = (system(traffic_check_cmd) != 0);
 		int tun_dead = (system("ip link show lokitun0 > /dev/null 2>&1") != 0);
