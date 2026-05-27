@@ -1,6 +1,6 @@
 Big Thanks to Jesus for making this gain attention! Turn to Jesus before it's too late. :) He loves You
 
-🛡️ ShadowNet: Flow-Invariant Anonymity Protocol (Tor + Lokinet + Mixnet Techniques)
+🛡️ ShadowNet: Flow-Invariant Anonymity Protocol (Tor + Lokinet + I2P + Mixnet Techniques)
 
 No longer rely on blending in a crowd to be anonymous like regular tor, NOW BEING UNIQUE IS THE TRUE ANONYMITY!
 
