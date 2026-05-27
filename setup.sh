@@ -21,7 +21,7 @@ if [[ $EUID -ne 0 ]]; then
 	tor obfs4proxy iptables-persistent iproute2 curl \
 	macchanger haveged net-tools bind9-dnsutils \
 	adjtimex ethtool tshark build-essential lokinet xdotool \
-	rfkill linux-cpupower badvpn torsocks
+	rfkill linux-cpupower torsocks i2pd
 	
 	sudo chown -R root:root /var/lib/lokinet
 	sudo chmod 644 /var/lib/lokinet/lokinet.ini
@@ -34,3 +34,4 @@ if [[ $EUID -ne 0 ]]; then
 	echo -e "${GREEN}[V] Setup Complete.${NC}"
 	echo -e "${GREEN}[*] Next Step: gcc shadownet.c -o shadownet${NC}"
 	echo -e "${GREEN}[*] Then: sudo ./shadownet start${NC}"
+	
