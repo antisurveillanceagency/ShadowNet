@@ -585,6 +585,7 @@ void start_shadownet() {
 	system("sudo ip rule add from 172.16.0.1 table i2p_table");
 	system("sudo ip route add default dev lokitun0 table i2p_table");
 	system("sudo ip rule add uidrange 1000-1000 table i2p_table");
+	system("I2PD_UID=$(id -u i2pd 2>/dev/null); [ -n \"$I2PD_UID\" ] && sudo iptables -A OUTPUT -m owner --uid-owner $I2PD_UID ! -o lokitun0 -j REJECT");
 	system("sudo ip route flush cache");
 	
 	unsigned long long last_loki_bytes = 0;
