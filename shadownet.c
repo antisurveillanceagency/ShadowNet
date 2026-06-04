@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <ctype.h>
 #include <time.h>
+#include <pwd.h> // Included for secure dynamic UID lookups
 
 // Global variable required by the monitoring loop condition
 int proc_missing = 0;
@@ -163,8 +164,8 @@ void stop_shadownet() {
 }
 
 /* eBPP Entropy Helper Function
- *  Performs advanced /dev/urandom structural scrambling on local address space routing,
- *  custom protocol headers, and handles high-resolution sub-second entropy timing delays.
+ * Performs advanced /dev/urandom structural scrambling on local address space routing,
+ * custom protocol headers, and handles high-resolution sub-second entropy timing delays.
  */
 void ebpp_entropy_scramble(char *rand_dest_ip, char *rand_src_ip, int *tos_val) {
 	unsigned char stream[8];
@@ -497,7 +498,7 @@ void start_shadownet() {
 
 	snprintf(cmd, sizeof(cmd), "sudo adjtimex -t %d >/dev/null 2>&1", assigned_tick);
 	system(cmd);
-	printf("\033[1;35m[+] Temporal Entropy Engaged: Clock Tick assigned to %d.\033[0m\n", assigned_tick);
+	printf("\n\033[1;35m[+] Temporal Entropy Engaged: Clock Tick assigned to %d.\033[0m\n", assigned_tick);
 
 	int post_adj_jitter = get_entropy_delay(5, 15);
 	printf("\033[1;33m[*] Applying Entropy IAT: %ds after Temporal Drift Adjustment...\033[0m\n", post_adj_jitter);
@@ -659,14 +660,41 @@ void start_shadownet() {
 	system("echo \"200 i2p_table\" | sudo tee -a /etc/iproute2/rt_tables");
 	system("sudo ip rule add from 172.16.0.1 table i2p_table");
 	system("sudo ip route add default dev lokitun0 table i2p_table");
-	system("sudo ip rule add uidrange 1000-1000 table i2p_table");
-	system("I2PD_UID=$(id -u i2pd 2>/dev/null); [ -n \"$I2PD_UID\" ] && sudo iptables -A OUTPUT -m owner --uid-owner $I2PD_UID ! -o lokitun0 -j REJECT");
-	system("sudo ip route flush cache");
+
+	// Dynamic Resolution Block for Policy Based Routing
+	struct passwd *p_i2pd = getpwnam("i2pd");
+	uid_t resolved_i2pd_uid = p_i2pd ? p_i2pd->pw_uid : 0;
+	uid_t current_user_uid = getuid();
+
+	// If running as root via sudo, attempt to resolve the real target user dynamically
+	if (current_user_uid == 0) {
+		char *sudo_user = getenv("SUDO_USER");
+		if (sudo_user) {
+			struct passwd *p_user = getpwnam(sudo_user);
+			if (p_user) current_user_uid = p_user->pw_uid;
+		}
+	}
+
+	char pbr_cmd[512];
+	// FIXED: Add dynamically resolved user UID rule to i2p_table using modern uidrange formatting
+	snprintf(pbr_cmd, sizeof(pbr_cmd), "sudo ip rule add uidrange %u-%u table i2p_table", current_user_uid, current_user_uid);
+	system(pbr_cmd);
+
+	// FIXED: Add dynamically resolved i2pd UID rule to i2p_table if found using modern uidrange formatting
+	if (resolved_i2pd_uid > 0) {
+		snprintf(pbr_cmd, sizeof(pbr_cmd), "sudo ip rule add uidrange %u-%u table i2p_table", resolved_i2pd_uid, resolved_i2pd_uid);
+		system(pbr_cmd);
+	}
+
+	// Add the explicitly requested 100-200 UID range to the i2p_table
+	system("sudo ip rule add uidrange 100-200 table i2p_table");
+
+	system("I2PD_UID=$(id -u i2pd 2>/dev/null); [ -n \"$I2PD_UID\" ] && sudo iptables -A OUTPUT -m owner --uid-owner \"$I2PD_UID\" ! -o lokitun0 -j REJECT");
 
 	/* Inline eBPF Engine Generation and Deployment Hook
-	 *  Compiles an inline eBPF classifier program that implements advanced /dev/urandom
-	 *  entropy-based sub-second Inter-Arrival Time (IAT) delays, full context packet rerouting,
-	 *  and parameter rewriting safely within the kernel workspace.
+	 * Compiles an inline eBPF classifier program that implements advanced /dev/urandom
+	 * entropy-based sub-second Inter-Arrival Time (IAT) delays, full context packet rerouting,
+	 * and parameter rewriting safely within the kernel workspace.
 	 */
 	printf("\033[1;36m[*] Injecting eBPF Subsystem for Core Dynamic Packet Processing & Rerouting...\033[0m\n");
 	FILE *ebpf_f = fopen("/dev/shm/shadownet_ebpf.c", "w");
