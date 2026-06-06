@@ -138,6 +138,10 @@ Power Lock	Governor:
 
 change	Masks CPU frequency side-channels.
 
+17. Loopix Mixnet-like techniques:
+
+    Added as additional helper to the entropy iat delays, packet reodering and shuffling.
+
 
 
 🚀 Quick Start
