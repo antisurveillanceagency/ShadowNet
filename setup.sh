@@ -20,7 +20,7 @@ if [[ $EUID -ne 0 ]]; then
 	DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	tor obfs4proxy iptables-persistent iproute2 curl \
 	macchanger haveged net-tools bind9-dnsutils \
-	adjtimex ethtool tshark build-essential lokinet xdotool \
+	adjtimex ethtool tshark build-essential lokinet \
 	rfkill linux-cpupower torsocks i2pd libmnl-dev libnftnl-dev
 
 	sudo chown -R root:root /var/lib/lokinet
