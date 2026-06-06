@@ -127,6 +127,8 @@ void execute_14_tier_sanitation(const char *name) {
 }
 
 void trigger_emergency_lockdown() {
+	// XDP Map Toggle 1ms Killswitch implementation hook
+	safe_execute("sudo bpftool map update pinned /sys/fs/bpf/shadownet_lockdown_map key 0 0 0 0 value 1 0 0 0 2>/dev/null");
 	safe_execute("iptables -P OUTPUT DROP; iptables -P INPUT DROP; iptables -P FORWARD DROP");
 	safe_execute("ip6tables -P OUTPUT DROP; ip6tables -P INPUT DROP; ip6tables -P FORWARD DROP");
 	safe_execute("iptables -F; iptables -t nat -F; iptables -t mangle -F");
@@ -194,6 +196,13 @@ void stop_shadownet() {
 	safe_execute("sudo rm -f /etc/NetworkManager/conf.d/dhcp-anon.conf");
 	safe_execute("systemctl restart NetworkManager");
 	safe_execute("sudo systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target >/dev/null 2>&1");
+
+	// Clean up XDP killswitch attachments (FIXED: Formatted into buffer before calling safe_execute)
+	char xdp_off_cmd[256];
+	snprintf(xdp_off_cmd, sizeof(xdp_off_cmd), "sudo ip link set dev %.16s xdp off 2>/dev/null", int_if);
+	safe_execute(xdp_off_cmd);
+
+	safe_execute("sudo rm -f /sys/fs/bpf/shadownet_lockdown_map 2>/dev/null");
 	printf("\033[1;31m[-] ShadowNet Deactivated. Integrity Restored.\033[0m\n");
 }
 
@@ -631,6 +640,24 @@ void start_shadownet() {
 				"#include <linux/ip.h>\n"
 				"#include <linux/bpf_endian.h>\n"
 				"\n"
+				"struct {\n"
+				" __uint(type, BPF_MAP_TYPE_ARRAY);\n"
+				" __uint(max_entries, 1);\n"
+				" __type(key, __u32);\n"
+				" __type(value, __u32);\n"
+				" __uint(pinning, BPF_PIN_BY_NAME);\n"
+				"} shadownet_lockdown_map SEC(\".maps\");\n"
+				"\n"
+				"SEC(\"xdp_killswitch\")\n"
+				"int shadownet_xdp_kill(struct xdp_md *ctx) {\n"
+				" __u32 key = 0;\n"
+				" __u32 *lockdown = bpf_map_lookup_elem(&shadownet_lockdown_map, &key);\n"
+				" if (lockdown && *lockdown == 1) {\n"
+				" return XDP_DROP;\n"
+				" }\n"
+				" return XDP_PASS;\n"
+				"}\n"
+				"\n"
 				"SEC(\"classifier\")\n"
 				"int shadownet_bpf_router(struct __sk_buff *skb) {\n"
 				" void *data = (void *)(long)skb->data;\n"
@@ -647,13 +674,15 @@ void start_shadownet() {
 				"}\n"
 				"char _license[] SEC(\"license\") = \"GPL\";\n", ebpp_tos_val);
 		fclose(ebpf_f);
+		safe_execute("sudo mkdir -p /sys/fs/bpf 2>/dev/null; sudo mount -t bpf bpf /sys/fs/bpf 2>/dev/null");
 		safe_execute("clang -O2 -target bpf -c /dev/shm/shadownet_ebpf.c -o /dev/shm/shadownet_ebpf.o 2>/dev/null");
 		char ebpf_attach_cmd[512];
 		snprintf(ebpf_attach_cmd, sizeof(ebpf_attach_cmd),
 				 "sudo tc qdisc add dev %.16s ingress 2>/dev/null; "
 				 "sudo tc filter add dev %.16s ingress bpf da obj /dev/shm/shadownet_ebpf.o sec classifier 2>/dev/null; "
-				 "sudo tc filter add dev %.16s egress bpf da obj /dev/shm/shadownet_ebpf.o sec classifier 2>/dev/null",
-		   int_if, int_if, int_if);
+				 "sudo tc filter add dev %.16s egress bpf da obj /dev/shm/shadownet_ebpf.o sec classifier 2>/dev/null; "
+				 "sudo ip link set dev %.16s xdp obj /dev/shm/shadownet_ebpf.o sec xdp_killswitch 2>/dev/null",
+		   int_if, int_if, int_if, int_if);
 		safe_execute(ebpf_attach_cmd);
 		printf("\033[1;32m[+] eBPF Bypass Subsystem: FULLY ENGAGED & ATTACHED to %.16s hooks\033[0m\n", int_if);
 	}
