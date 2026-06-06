@@ -12,7 +12,7 @@ chmod +x 777 *
 
 sudo bash setup.sh
 
-gcc shadownet.c -o shadownet
+gcc shadownet.c -o shadownet -lm
 
 sudo ./shadownet (start/stop)
 
@@ -116,19 +116,13 @@ a entropy iat delay which further mitigates their tracking methods. An entropy I
 leaving your machine and also to every single individual packets being sent. This adds a random delay to the timing
 of every packets.
 
-15. Session-based Aliases:
+15. Session-based Alias-Fixed:
 
 Now for each session you are either assigned one of these aliases
 
 Alias-Fixed - > For the entire session you will be assigned a randomly picked sphinx-like fixed packet
 
-Alias-Random - > For the entire session every single individual packets you send will be randomized
-
-16. Persona Entropy (Each Session)
-
-    For every session, you will be assigned 1 of three personas. "Deliberate", "Aggressive" or "Stochastic". Deliberate is a slow jitter persona, Aggressive is a faster jitter persona and Stochastic is completely randomized.
-
-17. Microphone/Webcam	Kill + Unload:
+16. Microphone/Webcam	Kill + Unload:
 
  Prevents remote audio/video surveillance.
  
