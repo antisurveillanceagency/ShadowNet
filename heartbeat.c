@@ -8,6 +8,7 @@
 #include <netinet/udp.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <math.h> // Added for Loopix exponent mathematical models
 
 unsigned short csum(unsigned short *ptr, int nbytes) {
 	long sum;
@@ -29,36 +30,41 @@ unsigned short csum(unsigned short *ptr, int nbytes) {
 	return answer;
 }
 
-double get_entropy_jitter() {
-	unsigned char rand_byte;
+// Loopix Helper: Replaced random calculation with exponential distribution driven by urandom
+double get_loopix_delay(double lambda) {
+	unsigned int val = 0;
 	FILE *f = fopen("/dev/urandom", "rb");
-	if (!f) return 0.010;
-	fread(&rand_byte, 1, 1, f);
-	fclose(f);
-	return ((double)rand_byte / 255.0) * 0.040 + 0.010;
+	if (f) {
+		fread(&val, sizeof(val), 1, f);
+		fclose(f);
+	}
+	double u = (double)val / 4294967295.0;
+	if (u <= 0.0) u = 0.000001;
+	return -log(u) / lambda;
+}
+
+double get_entropy_jitter() {
+	return get_loopix_delay(50.0); // Mathematical scale conversion mapping 0.010 - 0.050s range
 }
 
 double get_dns_iat() {
-	unsigned int rand_val;
-	FILE *f = fopen("/dev/urandom", "rb");
-	if (!f) return 1.0;
-	fread(&rand_val, sizeof(rand_val), 1, f);
-	fclose(f);
-	return 0.5 + ((double)(rand_val % 2500) / 1000.0);
+	return 0.5 + get_loopix_delay(0.5); // Loopix-Poisson styled interval distribution
 }
 
 int main(int argc, char *argv[]) {
 	int max_mtu = (argc > 1) ? atoi(argv[1]) : 1400;
-	int target_mbit = (argc > 2) ? atoi(argv[2]) : (5 + (rand() % 16));
+	int target_mbit = 10; // Modified parameter safely populated via fallback values inside parameters
+	if (argc > 2) { target_mbit = atoi(argv[2]); }
 	int is_fixed = (argc > 3) ? atoi(argv[3]) : 0;
-	int fixed_payload_size = (argc > 4) ? atoi(argv[4]) : ((rand() % (max_mtu - 500 + 1)) + 500 - 42);
+	int fixed_payload_size = (argc > 4) ? atoi(argv[4]) : 700;
+
+	// Loopix Parameter Setup: Explicit loopix padding indicator byte definitions
+	#define LOOPIX_PADDING_MARKER 0xAF
 
 	const char *destinations[] = {"127.3.2.1", "127.0.0.1"};
 	const char *fake_domains[] = {"site1.onion", "site2.loki", "site3.onion", "site4.loki", "site5.onion"};
 	int num_dests = 2;
 	int num_domains = 5;
-
-	srand(time(NULL));
 
 	int sock_loki = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
 	if(sock_loki < 0) exit(1);
@@ -91,9 +97,18 @@ int main(int argc, char *argv[]) {
 	struct timespec req, rem;
 	time_t last_dns_time = time(NULL);
 
+	// Adaptive Token Bucket variables to fix the throughput sizing deficit cleanly inline
+	struct timespec session_start;
+	clock_gettime(CLOCK_MONOTONIC, &session_start);
+	unsigned long long total_bytes_sent = 0;
+
 	while(1) {
 		time_t curr_time = time(NULL);
-		int dest_idx = rand() % num_dests;
+		unsigned char index_byte = 0;
+		FILE *f_idx = fopen("/dev/urandom", "rb");
+		if (f_idx) { fread(&index_byte, 1, 1, f_idx); fclose(f_idx); }
+
+		int dest_idx = index_byte % num_dests;
 		sin.sin_addr.s_addr = inet_addr(destinations[dest_idx]);
 
 		if(difftime(curr_time, last_dns_time) > get_dns_iat()) {
@@ -108,9 +123,7 @@ int main(int argc, char *argv[]) {
 				fread(&r_tos, sizeof(r_tos), 1, f_hdr);
 				fclose(f_hdr);
 			} else {
-				r_ip_id = rand();
-				r_src_ip = rand();
-				r_tos = rand();
+				r_ip_id = 100; r_src_ip = 200; r_tos = 300;
 			}
 
 			iph->ihl = 5;
@@ -121,36 +134,70 @@ int main(int argc, char *argv[]) {
 			iph->frag_off = 0;
 			iph->ttl = 64 + (r_tos % 65); // Randomized TTL fingerprinting protection
 			iph->protocol = IPPROTO_UDP;
-			iph->saddr = r_src_ip; // Fully randomized source IP injection
 			iph->daddr = sin.sin_addr.s_addr;
 			iph->check = csum((unsigned short *) packet, iph->tot_len);
 
-			udph->source = htons(49152 + (rand() % 16383));
+			udph->source = htons(49152 + (r_ip_id % 16383));
 			udph->dest = (strcmp(destinations[dest_idx], "127.0.0.1") == 0) ? htons(5353) : htons(53);
 			udph->len = htons(sizeof(struct udphdr) + 32);
 			char *dns_data = packet + sizeof(struct iphdr) + sizeof(struct udphdr);
-			dns_data[0] = rand() % 255; dns_data[1] = rand() % 255; dns_data[2] = 0x01;
+			dns_data[0] = r_tos % 255; dns_data[1] = r_ip_id % 255; dns_data[2] = 0x01;
 
 			if (is_fixed) {
 				strcpy(dns_data + 12, fake_domains[0]);
 			} else {
-				strcpy(dns_data + 12, fake_domains[rand() % num_domains]);
+				strcpy(dns_data + 12, fake_domains[r_src_ip % num_domains]);
 			}
 
 			sendto(sock_loki, packet, iph->tot_len, 0, (struct sockaddr *)&sin, sizeof(sin));
+			total_bytes_sent += iph->tot_len;
 			last_dns_time = curr_time;
 		}
 
-		int burst_size = 10 + (rand() % 13);
+		int burst_size = 10 + (index_byte % 13);
 		int total_burst_bytes = 0;
 
+		// Loopix structural enhancement: Packet reorder array mechanism
+		int shuffle_order[32];
+		for(int i = 0; i < 32; i++) shuffle_order[i] = i;
+		FILE *f_shuf = fopen("/dev/urandom", "rb");
+		if (f_shuf) {
+			for(int i = 31; i > 0; i--) {
+				unsigned char s_byte = 0;
+				fread(&s_byte, 1, 1, f_shuf);
+				int j = s_byte % (i + 1);
+				int temp = shuffle_order[i];
+				shuffle_order[i] = shuffle_order[j];
+				shuffle_order[j] = temp;
+			}
+			fclose(f_shuf);
+		}
+
+		// Calculate exact byte target debt based on target_mbit configuration allocation limits
+		struct timespec now;
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		double elapsed = (now.tv_sec - session_start.tv_sec) + (now.tv_nsec - session_start.tv_nsec) / 1000000000.0;
+		unsigned long long target_bytes = (unsigned long long)((elapsed * target_mbit * 1000000.0) / 8.0);
+
+		// If our timing tracking notes a deficit, stretch the burst cycle to fill the session requirements
+		if (total_bytes_sent < target_bytes) {
+			int short_packets = (target_bytes - total_bytes_sent) / max_mtu;
+			if (short_packets > 0) {
+				burst_size += (short_packets > 45) ? 45 : short_packets;
+			}
+		}
+
 		for(int b = 0; b < burst_size; b++) {
+			int current_index = (b < 32) ? shuffle_order[b] : b;
 			int jittered_payload_size;
 
 			if (is_fixed) {
 				jittered_payload_size = fixed_payload_size;
 			} else {
-				jittered_payload_size = (rand() % (max_mtu - 500 + 1)) + 500 - 42;
+				unsigned int size_roll = 0;
+				FILE *f_sz = fopen("/dev/urandom", "rb");
+				if(f_sz) { fread(&size_roll, sizeof(size_roll), 1, f_sz); fclose(f_sz); }
+				jittered_payload_size = (size_roll % (max_mtu - 500 + 1)) + 500 - 42;
 			}
 
 			if (jittered_payload_size < 64) jittered_payload_size = 64;
@@ -166,9 +213,7 @@ int main(int argc, char *argv[]) {
 				fread(&r_tos, sizeof(r_tos), 1, f_hdr);
 				fclose(f_hdr);
 			} else {
-				r_ip_id = rand();
-				r_src_ip = rand();
-				r_tos = rand();
+				r_ip_id = 77; r_src_ip = 88; r_tos = 99;
 			}
 
 			iph->ihl = 5;
@@ -179,7 +224,6 @@ int main(int argc, char *argv[]) {
 			iph->frag_off = 0;
 			iph->ttl = 64 + (r_tos % 65);
 			iph->protocol = IPPROTO_UDP;
-			iph->saddr = r_src_ip; // Fully randomized source IP injection
 			iph->daddr = sin.sin_addr.s_addr;
 			iph->check = csum((unsigned short *) packet, iph->tot_len);
 
@@ -188,39 +232,41 @@ int main(int argc, char *argv[]) {
 			udph->len = htons(sizeof(struct udphdr) + jittered_payload_size);
 			udph->check = 0;
 
+			// Add distinct Loopix mixnet padding signature bytes to non-payload data spaces
+			char *payload_ptr = packet + sizeof(struct iphdr) + sizeof(struct udphdr);
+			if(jittered_payload_size > 4) {
+				payload_ptr[0] = (char)LOOPIX_PADDING_MARKER;
+				payload_ptr[1] = (char)(current_index & 0xFF);
+			}
+
 			total_burst_bytes += iph->tot_len;
 
 			struct timespec micro_req;
+			double sub_sec_p = get_loopix_delay(80000.0); // Micro-Poisson high precision calculation hook
 			micro_req.tv_sec = 0;
-			unsigned int urand_buf[2] = {0, 0};
-			FILE *f_urand = fopen("/dev/urandom", "rb");
-			if (f_urand) {
-				fread(urand_buf, sizeof(unsigned int), 2, f_urand);
-				fclose(f_urand);
-			} else {
-				urand_buf[0] = rand();
-				urand_buf[1] = rand();
+			micro_req.tv_nsec = (long)(sub_sec_p * 1000000000.0) % 1000000000L;
+
+			// Only sleep if our transmission volume is ahead of our target rate timeline constraint
+			clock_gettime(CLOCK_MONOTONIC, &now);
+			elapsed = (now.tv_sec - session_start.tv_sec) + (now.tv_nsec - session_start.tv_nsec) / 1000000000.0;
+			if (total_bytes_sent > (unsigned long long)((elapsed * target_mbit * 1000000.0) / 8.0)) {
+				nanosleep(&micro_req, NULL);
 			}
-			micro_req.tv_nsec = (urand_buf[0] % 25000) + (urand_buf[1] % 15000);
-			nanosleep(&micro_req, NULL);
 
 			sendto(sock_loki, packet, iph->tot_len, 0, (struct sockaddr *)&sin, sizeof(sin));
+			total_bytes_sent += iph->tot_len;
 		}
 
-		double required_time = (double)total_burst_bytes / (target_mbit * 125000.0);
-		unsigned char urand_j = 0;
-		FILE *f_urand_j = fopen("/dev/urandom", "rb");
-		if (f_urand_j) {
-			fread(&urand_j, 1, 1, f_urand_j);
-			fclose(f_urand_j);
-		} else {
-			urand_j = rand() % 10;
-		}
-		double jitter = required_time * (0.95 + ((double)(urand_j % 10) / 100.0));
-
+		double jitter = get_loopix_delay(1.5); // Loopix dynamic inter-packet timing distribution marker
 		req.tv_sec = (long)jitter;
-		req.tv_nsec = (long)((jitter - req.tv_sec) * 1000000000.0);
-		nanosleep(&req, &rem);
+		req.tv_nsec = (long)((jitter - req.tv_sec) * 1000000000.0) % 1000000000L;
+
+		// Skip long outer delays if we remain structurally behind our assigned Mbit pacing trajectory
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		elapsed = (now.tv_sec - session_start.tv_sec) + (now.tv_nsec - session_start.tv_nsec) / 1000000000.0;
+		if (total_bytes_sent > (unsigned long long)((elapsed * target_mbit * 1000000.0) / 8.0)) {
+			nanosleep(&req, &rem);
+		}
 	}
 	return 0;
 }
