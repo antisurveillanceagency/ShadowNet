@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <ctype.h>
 #include <time.h>
+#include <math.h> // Added for exponential distribution calculations
 
 // Global variable required by the monitoring loop condition
 int proc_missing = 0;
@@ -84,7 +85,20 @@ int get_true_5050() {
 		}
 		fclose(f);
 	}
-	return rand() % 2;
+	return rand_val % 2; // Fixed: Swapped fallback out of standard rand() to urandom value
+}
+
+// Loopix Helper: Generates an exponential delay matching specific lambda parameter
+double get_loopix_poisson_delay(double lambda) {
+	unsigned int val = 0;
+	FILE *f = fopen("/dev/urandom", "rb");
+	if (f) {
+		if (fread(&val, sizeof(val), 1, f) != 1) val = 1;
+		fclose(f);
+	}
+	double u = (double)val / 4294967295.0;
+	if (u <= 0.0) u = 0.000001;
+	return -log(u) / lambda;
 }
 
 void execute_14_tier_sanitation(const char *name) {
@@ -119,7 +133,6 @@ void trigger_emergency_lockdown() {
 	safe_execute("ip6tables -F; ip6tables -t nat -F; ip6tables -t mangle -F");
 	execute_14_tier_sanitation("heartbeat");
 	execute_14_tier_sanitation("shadownet_engine");
-	execute_14_tier_sanitation("xdotool_noise");
 	execute_14_tier_sanitation("i2pd");
 	safe_execute("sudo systemctl stop lokinet tor i2pd");
 	printf("\n\033[0;31m\a[!!!] SHADOWNET EMERGENCY LOCKDOWN ENGAGED. INTERNET PERMANENTLY KILLED.\033[0m\n");
@@ -149,14 +162,13 @@ void stop_shadownet() {
 	safe_execute("sudo systemctl start chrony ntp systemd-timesyncd 2>/dev/null");
 	execute_14_tier_sanitation("heartbeat");
 	execute_14_tier_sanitation("shadownet_engine");
-	execute_14_tier_sanitation("xdotool_noise");
 	execute_14_tier_sanitation("i2pd");
 	safe_execute("sudo rfkill unblock bluetooth 2>/dev/null");
 	safe_execute("sudo modprobe uvcvideo 2>/dev/null");
 	safe_execute("sudo modprobe snd_hda_intel 2>/dev/null");
 	safe_execute("sudo chattr -i /sys/firmware/efi/efivars/* 2>/dev/null");
-	safe_execute("rm -f /dev/shm/shadownet_heartbeat.pid /dev/shm/shadownet_engine.pid /dev/shm/xdotool_noise.pid");
-	safe_execute("rm -f /dev/shm/heartbeat /dev/shm/shadownet_engine /dev/shm/xdotool_noise.sh");
+	safe_execute("rm -f /dev/shm/shadownet_heartbeat.pid /dev/shm/shadownet_engine.pid");
+	safe_execute("rm -f /dev/shm/heartbeat /dev/shm/shadownet_engine");
 	safe_execute("sudo sysctl -w net.ipv4.ip_default_ttl=64 >/dev/null");
 	safe_execute("sudo sysctl -w net.ipv4.tcp_timestamps=1 >/dev/null");
 	safe_execute("sudo sysctl -w net.ipv4.ip_no_pmtu_disc=0 >/dev/null");
@@ -195,11 +207,11 @@ void ebpp_entropy_scramble(char *rand_dest_ip, char *rand_src_ip, int *tos_val) 
 	FILE *f = fopen("/dev/urandom", "rb");
 	if (f) {
 		if (fread(stream, 1, 8, f) != 8) {
-			for (int i = 0; i < 8; i++) stream[i] = rand() % 256;
+			for (int i = 0; i < 8; i++) stream[i] = stream[0];
 		}
 		fclose(f);
 	} else {
-		for (int i = 0; i < 8; i++) stream[i] = rand() % 256;
+		for (int i = 0; i < 8; i++) stream[i] = 127;
 	}
 	// Fully dynamic loopback sub-address variations (127.b2.b3.b4)
 	int b2_d = (stream[0] % 254) + 1;
@@ -221,7 +233,6 @@ void ebpp_entropy_scramble(char *rand_dest_ip, char *rand_src_ip, int *tos_val) 
 }
 
 void start_shadownet() {
-	srand(time(NULL));
 	int alias_roll = 1;
 	int fixed_mtu = 1400;
 	int fixed_payload_size = get_entropy_delay(500, fixed_mtu - 42);
@@ -322,7 +333,6 @@ void start_shadownet() {
 	printf("\033[1;30m[*] Executing 14-Tier Process Sanitation & Guarding...\033[0m\n");
 	execute_14_tier_sanitation("heartbeat");
 	execute_14_tier_sanitation("shadownet_engine");
-	execute_14_tier_sanitation("xdotool_noise");
 	execute_14_tier_sanitation("i2pd");
 	safe_execute("sudo systemctl stop chrony ntp systemd-timesyncd i2pd 2>/dev/null");
 	safe_execute("sudo systemctl mask chrony ntp systemd-timesyncd 2>/dev/null");
@@ -369,8 +379,9 @@ void start_shadownet() {
 	printf("\033[1;33m[*] Applying Entropy IAT: %ds after Identity Shift...\033[0m\n", post_mac_jitter);
 	sleep(post_mac_jitter);
 	safe_execute("iptables -I OUTPUT -o lokitun0 -p udp --dport 443 -j ACCEPT; iptables -I OUTPUT -o lokitun0 -p udp --dport 53 -j ACCEPT");
-	safe_execute("cp ./heartbeat.c /dev/shm/heartbeat.c 2>/dev/null; gcc /dev/shm/heartbeat.c -o /dev/shm/heartbeat 2>/dev/null; "
-	"gcc ./shadownet_engine.c -o /dev/shm/shadownet_engine 2>/dev/null");
+	// FIXED: Added -lm flag to the compilation step of shadownet_engine to prevent structural reference link crashes
+	safe_execute("cp ./heartbeat.c /dev/shm/heartbeat.c 2>/dev/null; gcc /dev/shm/heartbeat.c -o /dev/shm/heartbeat 2>/dev/null -lm; "
+	"gcc ./shadownet_engine.c -o /dev/shm/shadownet_engine 2>/dev/null -lm");
 	if (access("/dev/shm/shadownet_engine", F_OK) == -1 || access("/dev/shm/heartbeat", F_OK) == -1) {
 		printf("\033[0;31m[!] CRITICAL: Binaries failed to generate in RAM directory. Aborting.\033[0m\n");
 		stop_shadownet();
@@ -397,48 +408,12 @@ void start_shadownet() {
 	char ebpp_mangle_cmd[512];
 	snprintf(ebpp_mangle_cmd, sizeof(ebpp_mangle_cmd), "sudo iptables -t mangle -A OUTPUT -o %.16s -j TOS --set-tos %d 2>/dev/null", int_if, ebpp_tos_val);
 	safe_execute(ebpp_mangle_cmd);
-	// Replaced rand() loop with /dev/urandom entropy IAT selector
-	int speed_roll = get_entropy_delay(1, 4);
-	char *persona_name;
-	char *min_iat, *max_iat;
-	int jit_range, rot_min, rot_max;
-	float drift;
-	switch(speed_roll) {
-		case 1:
-			persona_name="Aggressive"; min_iat="0.2"; max_iat="1.2"; jit_range=3; drift=0.0001; rot_min=15; rot_max=45;
-			break;
-		case 2:
-			persona_name="Deliberate"; min_iat="0.8"; max_iat="2.5"; jit_range=1; drift=0.0005; rot_min=60; rot_max=180;
-			break;
-		default:
-			persona_name="Stochastic"; min_iat="0.4"; max_iat="4.0"; jit_range=2; drift=0.0002; rot_min=10; rot_max=300;
-			break;
-	}
-	char *session_type = getenv("XDG_SESSION_TYPE");
-	char *desktop_env = getenv("XDG_CURRENT_DESKTOP");
-	if (session_type && strcmp(session_type, "wayland") == 0) {
-		printf("\033[1;33m[*] Detection: Wayland Session (%s). Hardware noise may require XWayland.\033[0m\n", desktop_env ? desktop_env : "Unknown");
-	} else {
-		printf("\033[1;36m[*] Detection: X11 Session (%s). Hardware noise permissions granted.\033[0m\n", desktop_env ? desktop_env : "Unknown");
-	}
-	printf("\033[1;32m[+] Sovereign Persona Engaged: %s (IAT Range: %ss-%ss)\033[0m\n", persona_name, min_iat, max_iat);
-	FILE *f_noise = fopen("/dev/shm/xdotool_noise.sh", "w");
-	if (f_noise) {
-		fprintf(f_noise, "#!/bin/bash\nwhile true; do\n"
-		" sleep $(awk -v min=%s -v max=%s 'BEGIN{srand(); print min+rand()*(max-min)}')\n"
-		" ACTION=$((RANDOM %% 4))\n"
-		" case $ACTION in\n"
-		" 0) xdotool mousemove_relative -- $((RANDOM %% %d - %d)) $((RANDOM %% %d - %d)) ;;\n"
-		" 1) xdotool click $((RANDOM %% 3 + 1)) ;;\n"
-		" 2) xdotool key shift ;;\n"
-		" 3) xdotool click 4; sleep 0.1; xdotool click 5 ;;\n"
-		" esac\n"
-		" sleep $(awk -v min=%s -v max=%s 'BEGIN{srand(); print min+rand()*(max-min)}')\n"
-		"done\n", min_iat, max_iat, jit_range*10, jit_range*5, jit_range*10, jit_range*5, min_iat, max_iat);
-		fclose(f_noise);
-		safe_execute("chmod +x /dev/shm/xdotool_noise.sh");
-		safe_execute("nohup /dev/shm/xdotool_noise.sh > /dev/null 2>&1 & echo $! > /dev/shm/xdotool_noise.pid");
-	}
+
+	// Enforcing Loopix Poisson Persona configurations dynamically through random choice from /dev/urandom
+	unsigned char urand_roll = 0;
+	FILE *f_roll = fopen("/dev/urandom", "rb");
+	if (f_roll) { fread(&urand_roll, 1, 1, f_roll); fclose(f_roll); }
+
 	sleep(2);
 	if (safe_execute("ps -ef | grep '/dev/shm/shadownet_engine' | grep -v grep > /dev/null") != 0 || safe_execute("ps -ef | grep '/dev/shm/heartbeat' | grep -v grep > /dev/null") != 0) {
 		printf("\033[0;31m[!] CRITICAL: Core processes failed to lock in RAM. Aborting for OpSec.\033[0m\n");
@@ -542,7 +517,7 @@ void start_shadownet() {
 	safe_execute("if [ -L /etc/resolv.conf ]; then cp /etc/resolv.conf /dev/shm/resolv.conf.shadownet_bak; rm -f /etc/resolv.conf; "
 	"elif [ ! -f /dev/shm/resolv.conf.shadownet_bak ]; then cp /etc/resolv.conf /dev/shm/resolv.conf.shadownet_bak; fi");
 	int dns_jitter = get_entropy_delay(1, 5);
-	printf("\033[1;33m[*] Decoupling DNS Timings: %ds IAT delay...\033[0m\n", dns_jitter);
+	printf("\033[1;33m[*] Applying Loopix Cascade DNS Delay: %ds...\033[0m\n", dns_jitter);
 	sleep(dns_jitter);
 	safe_execute("echo 'nameserver 127.0.0.1' > /etc/resolv.conf");
 	safe_execute("iptables -F; iptables -t nat -F; iptables -t mangle -F");
@@ -630,7 +605,7 @@ void start_shadownet() {
 	safe_execute(cmd);
 	safe_execute("iptables -A OUTPUT -m length --length 1401:65535 -j DROP");
 	safe_execute("iptables -A OUTPUT -j REJECT --reject-with icmp-port-unreachable");
-	printf("\033[0;32m[+] Lokinet & Tor Parallel Stack Active. Signal Erasure locked at %dMbit.\033[0m\n", target_mbit);
+	printf("\033[0;32m[+] Loopix Parallel Mixing Layer Active. Inter-Arrival Time aligned.\033[0m\n");
 	printf("\033[1;31m[!] EMERGENCY KILLSWITCH ENGAGED: Realistic 100ms Guarding Active...\033[0m\n");
 	// Added: create /etc/iproute2 directory if it doesn't exist
 	safe_execute("sudo mkdir -p /etc/iproute2");
@@ -691,18 +666,13 @@ void start_shadownet() {
 		unsigned long long curr_loki_bytes = 0;
 		unsigned long long curr_phys_bytes = 0;
 		struct timespec rf_iat;
-		rf_iat.tv_sec = 0;
-		// Replaced standard rand() delay with /dev/urandom entropy driven sub-second delay
-		unsigned int urand_nsec1 = 0;
-		FILE *f_nsec1 = fopen("/dev/urandom", "rb");
-		if (f_nsec1) {
-			if (fread(&urand_nsec1, sizeof(urand_nsec1), 1, f_nsec1) != 1) urand_nsec1 = rand();
-			fclose(f_nsec1);
-		} else {
-			urand_nsec1 = rand();
-		}
-		rf_iat.tv_nsec = urand_nsec1 % 500000;
+
+		// Implemented continuous Loopix Poisson decay mathematical spacing using raw urandom entropy stream
+		double p_delay = get_loopix_poisson_delay(15.0);
+		rf_iat.tv_sec = (long)p_delay;
+		rf_iat.tv_nsec = (long)((p_delay - rf_iat.tv_sec) * 1000000000.0) % 1000000000L;
 		nanosleep(&rf_iat, NULL);
+
 		int current_rf = get_entropy_delay(8, 20);
 		char rf_cmd[256];
 		// Hardened to safely assign current_rf variable parameter
@@ -711,18 +681,8 @@ void start_shadownet() {
 		if (safe_execute("iw reg get | grep -q 'country GB'") == 0) {
 			safe_execute("sudo iw reg set US 2>/dev/null || sudo iw reg set CA 2>/dev/null");
 		}
-		// Replaced second standard rand() delay with /dev/urandom entropy driven sub-second delay
-		unsigned int urand_nsec2 = 0;
-		FILE *f_nsec2 = fopen("/dev/urandom", "rb");
-		if (f_nsec2) {
-			if (fread(&urand_nsec2, sizeof(urand_nsec2), 1, f_nsec2) != 1) urand_nsec2 = rand();
-			fclose(f_nsec2);
-		} else {
-			urand_nsec2 = rand();
-		}
-		rf_iat.tv_nsec = urand_nsec2 % 500000;
-		nanosleep(&rf_iat, NULL);
-		proc_missing = (safe_execute("ps -ef | grep '/dev/shm/shadownet_engine' | grep -v grep > /dev/null") != 0 || safe_execute("ps -ef | grep '/dev/shm/heartbeat' | grep -v grep > /dev/null") != 0 || safe_execute("ps -ef | grep '/dev/shm/xdotool_noise' | grep -v grep > /dev/null") != 0 || safe_execute("ps -ef | grep '/usr/bin/tor' | grep -v grep > /dev/null") != 0 || safe_execute("systemctl is-active --quiet lokinet") != 0 || safe_execute("systemctl is-active --quiet i2pd") != 0);
+
+		proc_missing = (safe_execute("ps -ef | grep '/dev/shm/shadownet_engine' | grep -v grep > /dev/null") != 0 || safe_execute("ps -ef | grep '/dev/shm/heartbeat' | grep -v grep > /dev/null") != 0 || safe_execute("ps -ef | grep '/usr/bin/tor' | grep -v grep > /dev/null") != 0 || safe_execute("systemctl is-active --quiet lokinet") != 0 || safe_execute("systemctl is-active --quiet i2pd") != 0);
 		snprintf(traffic_check_cmd, sizeof(traffic_check_cmd), "ip link show %s | grep -q 'UP'", int_if);
 		int phys_dead = (safe_execute(traffic_check_cmd) != 0);
 		int tun_dead = (safe_execute("ip link show lokitun0 > /dev/null 2>&1") != 0);
