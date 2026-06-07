@@ -196,12 +196,12 @@ void stop_shadownet() {
 	safe_execute("sudo rm -f /etc/NetworkManager/conf.d/dhcp-anon.conf");
 	safe_execute("systemctl restart NetworkManager");
 	safe_execute("sudo systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target >/dev/null 2>&1");
-	
+
 	// Clean up XDP killswitch attachments (FIXED: Formatted into buffer before calling safe_execute)
 	char xdp_off_cmd[256];
 	snprintf(xdp_off_cmd, sizeof(xdp_off_cmd), "sudo ip link set dev %.16s xdp off 2>/dev/null", int_if);
 	safe_execute(xdp_off_cmd);
-	
+
 	safe_execute("sudo rm -f /sys/fs/bpf/shadownet_lockdown_map 2>/dev/null");
 	printf("\033[1;31m[-] ShadowNet Deactivated. Integrity Restored.\033[0m\n");
 }
@@ -417,12 +417,12 @@ void start_shadownet() {
 	char ebpp_mangle_cmd[512];
 	snprintf(ebpp_mangle_cmd, sizeof(ebpp_mangle_cmd), "sudo iptables -t mangle -A OUTPUT -o %.16s -j TOS --set-tos %d 2>/dev/null", int_if, ebpp_tos_val);
 	safe_execute(ebpp_mangle_cmd);
-	
+
 	// Enforcing Loopix Poisson Persona configurations dynamically through random choice from /dev/urandom
 	unsigned char urand_roll = 0;
 	FILE *f_roll = fopen("/dev/urandom", "rb");
 	if (f_roll) { fread(&urand_roll, 1, 1, f_roll); fclose(f_roll); }
-	
+
 	sleep(2);
 	if (safe_execute("ps -ef | grep '/dev/shm/shadownet_engine' | grep -v grep > /dev/null") != 0 || safe_execute("ps -ef | grep '/dev/shm/heartbeat' | grep -v grep > /dev/null") != 0) {
 		printf("\033[0;31m[!] CRITICAL: Core processes failed to lock in RAM. Aborting for OpSec.\033[0m\n");
@@ -695,13 +695,13 @@ void start_shadownet() {
 		unsigned long long curr_loki_bytes = 0;
 		unsigned long long curr_phys_bytes = 0;
 		struct timespec rf_iat;
-		
+
 		// Implemented continuous Loopix Poisson decay mathematical spacing using raw urandom entropy stream
 		double p_delay = get_loopix_poisson_delay(15.0);
 		rf_iat.tv_sec = (long)p_delay;
 		rf_iat.tv_nsec = (long)((p_delay - rf_iat.tv_sec) * 1000000000.0) % 1000000000L;
 		nanosleep(&rf_iat, NULL);
-		
+
 		int current_rf = get_entropy_delay(8, 20);
 		char rf_cmd[256];
 		// Hardened to safely assign current_rf variable parameter
@@ -710,7 +710,7 @@ void start_shadownet() {
 		if (safe_execute("iw reg get | grep -q 'country GB'") == 0) {
 			safe_execute("sudo iw reg set US 2>/dev/null || sudo iw reg set CA 2>/dev/null");
 		}
-		
+
 		proc_missing = (safe_execute("ps -ef | grep '/dev/shm/shadownet_engine' | grep -v grep > /dev/null") != 0 || safe_execute("ps -ef | grep '/dev/shm/heartbeat' | grep -v grep > /dev/null") != 0 || safe_execute("ps -ef | grep '/usr/bin/tor' | grep -v grep > /dev/null") != 0 || safe_execute("systemctl is-active --quiet lokinet") != 0 || safe_execute("systemctl is-active --quiet i2pd") != 0);
 		snprintf(traffic_check_cmd, sizeof(traffic_check_cmd), "ip link show %s | grep -q 'UP'", int_if);
 		int phys_dead = (safe_execute(traffic_check_cmd) != 0);
