@@ -369,7 +369,7 @@ void start_shadownet() {
 	printf("\033[1;33m[*] Applying Identity Entropy: %ds before Lokinet Ignition...\033[0m\n", post_mac_iat);
 	sleep(post_mac_iat);
 	printf("\033[1;36m[*] Overriding Lokinet Configuration...\033[0m\n");
-	safe_execute("printf '[network]\\nexit-node=exit.loki\\nenabled=true\\n\\n[dns]\\n\\n\\n[router]\\n' | sudo tee /var/lib/lokinet/lokinet.ini > /dev/null");
+	safe_execute("printf '[network]\\nexit-node=exit.loki\\nenabled=true\\n\\n[dns]\\nbind=127.0.0.1\\n\\n[router]\\n' | sudo tee /var/lib/lokinet/lokinet.ini > /dev/null");
 	printf("\033[1;36m[*] Starting Lokinet Service (Exempted for Peer Discovery)...\033[0m\n");
 	safe_execute("sudo systemctl start lokinet");
 	int post_loki_iat = get_entropy_delay(15, 30);
@@ -621,6 +621,7 @@ void start_shadownet() {
 	safe_execute("echo \"200 i2p_table\" | sudo tee -a /etc/iproute2/rt_tables");
 	safe_execute("sudo ip rule add from 172.16.0.1 table i2p_table");
 	safe_execute("sudo ip route add default dev lokitun0 table i2p_table");
+	safe_execute("sudo ip route add 127.0.0.0/8 dev lo table i2p_table");
 	safe_execute("sudo ip rule add uidrange 1000-1000 table i2p_table");
 	safe_execute("I2PD_UID=$(id -u i2pd 2>/dev/null); [ -n \"$I2PD_UID\" ] && sudo iptables -A OUTPUT -m owner --uid-owner $I2PD_UID ! -o lokitun0 -j REJECT");
 	safe_execute("sudo iptables -A OUTPUT -m owner --uid-owner i2pd ! -o lokitun0 -j REJECT");
