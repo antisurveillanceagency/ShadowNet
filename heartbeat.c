@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
 
 	const char *device = "lokitun0";
 	if (setsockopt(sock_loki, SOL_SOCKET, SO_BINDTODEVICE, device, strlen(device)) < 0) {
-		printf("\033[0;31m[!] Error: Failed to bind heartbeat to lokitun0 interface.\033[0m\n");
+		printf("\033;31m[!] Error: Failed to bind heartbeat to lokitun0 interface.\033[0m\n");
 		exit(1);
 	}
 
