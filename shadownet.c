@@ -377,7 +377,7 @@ void start_shadownet() {
 	sleep(post_loki_iat);
 	printf("\033[1;33m[*] Applying Entropy IAT: %ds before i2pd Initialization...\033[0m\n", get_entropy_delay(6, 12));
 	printf("\033[1;36m[*] Rewriting and Hardening i2pd Interface Parameters...\033[0m\n");
-	safe_execute("printf 'ifname = lokitun0\\nifname4 = 172.16.0.1\\naddress4 = 172.16.0.1\\nport = 4567\\nipv4 = true\\nipv6 = false\\n[ntcp2]\\nenabled = true\\nport = 4567\\n[ssu2]\\n[http]\\nenabled = true\\naddress = 172.16.0.1\\nport = 7070\\n[httpproxy]\\nenabled = true\\naddress = 172.16.0.1\\nport = 4444\\n[socksproxy]\\nenabled = true\\naddress = 172.16.0.1\\nport = 4447\\n[sam]\\nenabled = true\\naddress = 172.16.0.1\\nport = 7656\\nportudp = 7655\\n[bob]\\nenabled = true\\naddress = 172.16.0.1\\nport = 2827\\n[i2cp]\\nenabled = true\\naddress = 172.16.0.1\\nport = 7654\\n[i2pcontrol]\\nenabled = true\\naddress = 172.16.0.1\\nport = 7650\\n[precomputation]\\n[upnp]\\n[meshnets]\\n[reseed]\\nverify = true\\n[addressbook]\\n[limits]\\n[trust]\\n[exploratory]\\n[persist]\\n' | sudo tee /etc/i2pd/i2pd.conf > /dev/null");
+	safe_execute("printf 'ifname = lokitun0\\nifname4 = 172.16.0.1\\naddress4 = 172.16.0.1\\nport = 4567\\nipv4 = true\\nipv6 = false\\n[ntcp2]\\nenabled = true\\nport = 4567\\n[ssu2]\\n[http]\\nenabled = true\\naddress = 172.16.0.1\\nport = 7070\\n[httpproxy]\\nenabled = true\\naddress = 172.16.0.1\\nport = 4444\\noutproxy = false.i2p\\n[socksproxy]\\nenabled = true\\naddress = 172.16.0.1\\nport = 4447\\n[sam]\\nenabled = true\\naddress = 172.16.0.1\\nport = 7656\\nportudp = 7655\\n[bob]\\nenabled = true\\naddress = 172.16.0.1\\nport = 2827\\n[i2cp]\\nenabled = true\\naddress = 172.16.0.1\\nport = 7654\\n[i2pcontrol]\\nenabled = true\\naddress = 172.16.0.1\\nport = 7650\\n[precomputation]\\n[upnp]\\n[meshnets]\\n[reseed]\\nverify = true\\n[addressbook]\\n[limits]\\n[trust]\\n[exploratory]\\n[persist]\\n' | sudo tee /etc/i2pd/i2pd.conf > /dev/null");
 	safe_execute("sudo systemctl start i2pd");
 	snprintf(cmd, sizeof(cmd), "sudo ip link set %.16s mtu %d", int_if, fixed_mtu);
 	safe_execute(cmd);
@@ -618,11 +618,11 @@ void start_shadownet() {
 	printf("\033[1;31m[!] EMERGENCY KILLSWITCH ENGAGED: Realistic 100ms Guarding Active...\033[0m\n");
 	// Added: create /etc/iproute2 directory if it doesn't exist
 	safe_execute("sudo mkdir -p /etc/iproute2");
-	safe_execute("echo \"200 i2p_table\" | sudo tee -a /etc/iproute2/rt_tables");
-	safe_execute("sudo ip rule add from 172.16.0.1 table i2p_table");
-	safe_execute("sudo ip route add default dev lokitun0 table i2p_table");
-	safe_execute("sudo ip route add 127.0.0.0/8 dev lo table i2p_table");
-	safe_execute("sudo ip rule add uidrange 1000-1000 table i2p_table");
+	safe_execute("grep -q \"200 i2p_table\" /etc/iproute2/rt_tables 2>/dev/null || echo \"200 i2p_table\" | sudo tee -a /etc/iproute2/rt_tables >/dev/null");
+	safe_execute("sudo ip rule del from 172.16.0.1 table i2p_table 2>/dev/null; sudo ip rule add from 172.16.0.1 table i2p_table");
+	safe_execute("sudo ip route replace default dev lokitun0 table i2p_table");
+	safe_execute("sudo ip route replace 127.0.0.0/8 dev lo table i2p_table");
+	safe_execute("sudo ip rule del uidrange 1000-1000 table i2p_table 2>/dev/null; sudo ip rule add uidrange 1000-1000 table i2p_table");
 	safe_execute("I2PD_UID=$(id -u i2pd 2>/dev/null); [ -n \"$I2PD_UID\" ] && sudo iptables -A OUTPUT -m owner --uid-owner $I2PD_UID ! -o lokitun0 -j REJECT");
 	safe_execute("sudo iptables -A OUTPUT -m owner --uid-owner i2pd ! -o lokitun0 -j REJECT");
 	safe_execute("sudo iptables -A OUTPUT -m owner --uid-owner i2pd ! -o lokitun0 -j DROP");
