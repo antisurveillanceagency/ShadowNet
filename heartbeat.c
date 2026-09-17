@@ -8,7 +8,7 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
-#include <math.h>
+#include <math.h> 
 #include <netdb.h>
 #include <signal.h>
 
@@ -45,22 +45,22 @@ double get_loopix_delay(double lambda) {
 }
 
 double get_entropy_jitter() {
-	return get_loopix_delay(50.0);
+	return get_loopix_delay(50.0); 
 }
 
 double get_dns_iat() {
-	return 0.5 + get_loopix_delay(0.5);
+	return 0.5 + get_loopix_delay(0.5); 
 }
 
 int main(int argc, char *argv[]) {
-	signal(SIGPIPE, SIG_IGN);
-
+	signal(SIGPIPE, SIG_IGN); 
+	
 	int max_mtu = (argc > 1) ? atoi(argv[1]) : 1400;
-	int target_kbps = 1000;
+	int target_kbps = 1000; 
 	if (argc > 2) { target_kbps = atoi(argv[2]); }
 	int is_fixed = (argc > 3) ? atoi(argv[3]) : 0;
 	int is_fixed_payload = (argc > 4) ? atoi(argv[4]) : 700;
-
+	
 	const char *targets[10];
 	targets[0] = (argc > 5) ? argv[5] : "duckduckgo.com";
 	targets[1] = (argc > 6) ? argv[6] : "google.com";
@@ -72,31 +72,31 @@ int main(int argc, char *argv[]) {
 	targets[7] = (argc > 12) ? argv[12] : "github.com";
 	targets[8] = (argc > 13) ? argv[13] : "archlinux.org";
 	targets[9] = (argc > 14) ? argv[14] : "eff.org";
-
+	
 	#define LOOPIX_PADDING_MARKER 0xAF
-
+	
 	const char *destinations[] = {"127.3.2.1", "127.0.0.1"};
 	const char *fake_domains[] = {"site1.onion", "site2.onion", "site3.onion", "site4.onion", "site5.onion"};
 	int num_dests = 2;
 	int num_domains = 5;
-
+	
 	int socks[10];
 	struct sockaddr_in sins[10];
 	int mark = 76;
-
+	
 	for (int i = 0; i < 10; i++) {
 		socks[i] = socket(AF_INET, SOCK_STREAM, 0);
 		if(socks[i] < 0) exit(1);
-
+		
 		if (setsockopt(socks[i], SOL_SOCKET, SO_MARK, &mark, sizeof(mark)) < 0) {
 			printf("\033[0;31m[!] Error: Failed to set socket mark 76 | Co Authored By JS / ASA.\033[0m\n");
 			exit(1);
 		}
-
+		
 		memset(&sins[i], 0, sizeof(sins[i]));
 		sins[i].sin_family = AF_INET;
 		sins[i].sin_port = htons(443);
-
+		
 		struct hostent *he = gethostbyname(targets[i]);
 		if (he) {
 			memcpy(&sins[i].sin_addr, he->h_addr_list[0], he->h_length);
@@ -105,29 +105,29 @@ int main(int argc, char *argv[]) {
 		}
 		connect(socks[i], (struct sockaddr *)&sins[i], sizeof(sins[i]));
 	}
-
+	
 	char packet[4096];
 	struct iphdr *iph = (struct iphdr *) packet;
 	struct tcphdr *tcph = (struct tcphdr *) (packet + sizeof(struct iphdr));
-
+	
 	struct sockaddr_in sin;
 	sin.sin_family = AF_INET;
-
+	
 	struct timespec req, rem;
 	time_t last_dns_time = time(NULL);
-
+	
 	while(1) {
 		time_t curr_time = time(NULL);
 		unsigned char index_byte = 0;
 		FILE *f_idx = fopen("/dev/urandom", "rb");
 		if (f_idx) { if (fread(&index_byte, 1, 1, f_idx) != 1) index_byte = 0; fclose(f_idx); }
-
+		
 		int tgt_idx = index_byte % 10;
 		sin.sin_addr.s_addr = sins[tgt_idx].sin_addr.s_addr;
-
+		
 		if(difftime(curr_time, last_dns_time) > get_dns_iat()) {
 			memset(packet, 0, 4096);
-
+			
 			unsigned int r_ip_id = 0, r_src_ip = 0, r_tos = 0;
 			FILE *f_hdr = fopen("/dev/urandom", "rb");
 			if (f_hdr) {
@@ -138,29 +138,29 @@ int main(int argc, char *argv[]) {
 			} else {
 				r_ip_id = 100; r_src_ip = 200; r_tos = 300;
 			}
-
+			
 			iph->ihl = 5;
 			iph->version = 4;
 			iph->tos = r_tos % 256;
 			iph->tot_len = sizeof(struct iphdr) + sizeof(struct tcphdr) + 32;
 			iph->id = htons(r_ip_id % 65535);
 			iph->frag_off = 0;
-			iph->ttl = 64 + (r_tos % 65);
+			iph->ttl = 64 + (r_tos % 65); 
 			iph->protocol = IPPROTO_TCP;
 			iph->daddr = sin.sin_addr.s_addr;
 			iph->check = csum((unsigned short *) packet, iph->tot_len);
-
+			
 			tcph->source = htons(49152 + (r_ip_id % 16383));
-			tcph->dest = htons(5353);
+			tcph->dest = htons(5353); 
 			char *dns_data = packet + sizeof(struct iphdr) + sizeof(struct tcphdr);
 			dns_data[0] = r_tos % 255; dns_data[1] = r_ip_id % 255; dns_data[2] = 0x01;
-
+			
 			if (is_fixed) {
 				strcpy(dns_data + 12, fake_domains[0]);
 			} else {
 				strcpy(dns_data + 12, fake_domains[r_src_ip % num_domains]);
 			}
-
+			
 			if (send(socks[tgt_idx], packet, iph->tot_len, MSG_NOSIGNAL) < 0) {
 				close(socks[tgt_idx]);
 				socks[tgt_idx] = socket(AF_INET, SOCK_STREAM, 0);
@@ -170,9 +170,9 @@ int main(int argc, char *argv[]) {
 			}
 			last_dns_time = curr_time;
 		}
-
+		
 		int burst_size = 10 + (index_byte % 13);
-
+		
 		int shuffle_order[32];
 		for(int i = 0; i < 32; i++) shuffle_order[i] = i;
 		FILE *f_shuf = fopen("/dev/urandom", "rb");
@@ -188,11 +188,11 @@ int main(int argc, char *argv[]) {
 			}
 			fclose(f_shuf);
 		}
-
+		
 		for(int b = 0; b < burst_size; b++) {
 			int current_index = (b < 32) ? shuffle_order[b] : b;
 			int jittered_payload_size;
-
+			
 			if (is_fixed) {
 				jittered_payload_size = is_fixed_payload;
 			} else {
@@ -201,11 +201,11 @@ int main(int argc, char *argv[]) {
 				if(f_sz) { if (fread(&size_roll, sizeof(size_roll), 1, f_sz) != 1) size_roll = 0; fclose(f_sz); }
 				jittered_payload_size = (size_roll % (max_mtu - 500 + 1)) + 500 - 42;
 			}
-
+			
 			if (jittered_payload_size < 64) jittered_payload_size = 64;
-
+			
 			memset(packet, 0, 4096);
-
+			
 			unsigned int r_ip_id = 0, r_src_ip = 0, r_tos = 0;
 			FILE *f_hdr = fopen("/dev/urandom", "rb");
 			if (f_hdr) {
@@ -216,7 +216,7 @@ int main(int argc, char *argv[]) {
 			} else {
 				r_ip_id = 77; r_src_ip = 88; r_tos = 99;
 			}
-
+			
 			iph->ihl = 5;
 			iph->version = 4;
 			iph->tos = r_tos % 256;
@@ -227,12 +227,12 @@ int main(int argc, char *argv[]) {
 			iph->protocol = IPPROTO_TCP;
 			iph->daddr = sin.sin_addr.s_addr;
 			iph->check = csum((unsigned short *) packet, iph->tot_len);
-
+			
 			tcph->source = htons(443);
 			tcph->dest = htons(443);
 			tcph->doff = 5;
 			tcph->check = 0;
-
+			
 			char *payload_ptr = packet + sizeof(struct iphdr) + sizeof(struct tcphdr);
 			if(jittered_payload_size > 4) {
 				payload_ptr[0] = (char)LOOPIX_PADDING_MARKER;
@@ -240,14 +240,14 @@ int main(int argc, char *argv[]) {
 				payload_ptr[2] = (char)((r_ip_id >> 4) & 0xFF);
 				payload_ptr[3] = (char)((r_src_ip >> 4) & 0xFF);
 			}
-
+			
 			struct timespec micro_req;
-			double sub_sec_p = get_loopix_delay(80000.0);
+			double sub_sec_p = get_loopix_delay(80000.0); 
 			micro_req.tv_sec = 0;
 			micro_req.tv_nsec = (long)(sub_sec_p * 1000000000.0) % 1000000000L;
-
+			
 			nanosleep(&micro_req, NULL);
-
+			
 			if (send(socks[tgt_idx], packet, iph->tot_len, MSG_NOSIGNAL) < 0) {
 				close(socks[tgt_idx]);
 				socks[tgt_idx] = socket(AF_INET, SOCK_STREAM, 0);
@@ -256,11 +256,11 @@ int main(int argc, char *argv[]) {
 				send(socks[tgt_idx], packet, iph->tot_len, MSG_NOSIGNAL);
 			}
 		}
-
-		double jitter = get_loopix_delay(1.5);
+		
+		double jitter = get_loopix_delay(1.5); 
 		req.tv_sec = (long)jitter;
 		req.tv_nsec = (long)((jitter - req.tv_sec) * 1000000000.0) % 1000000000L;
-
+		
 		nanosleep(&req, &rem);
 	}
 	return 0;
