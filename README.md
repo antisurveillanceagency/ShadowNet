@@ -1,6 +1,6 @@
 Big Thanks to Jesus for making this gain attention! Turn to Jesus before it's too late. :) He loves You
 
-To even further enhance your privacy and security; Use ShadowNet on your Host OS & Run Whonix in a VM to browse the web. Or you can use GhostBox (Sandboxing tool released by Anti Surveillance Agency)
+To even further enhance your privacy and security; Use ShadowNet on your Host OS & Run Whonix in a VM to browse the web. Or you can use GhostBox. (Sandboxing tool released by Anti Surveillance Agency)
 
 Git-clone GhostBox here: https://github.com/antisurveillanceagency/GhostBox
 
